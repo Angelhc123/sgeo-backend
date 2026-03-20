@@ -4,3 +4,6 @@ pymongo
 python-dotenv
 pydantic[email]
 bcrypt
+scikit-learn
+pandas
+numpy
