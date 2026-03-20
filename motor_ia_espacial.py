@@ -76,7 +76,7 @@ def ejecutar_ia_zonas_riesgo():
             "nivel_riesgo": nivel_riesgo,
             "total_incidentes": total,
             "delito_predominante": delito_principal,
-            "tendencia": "historica (SIDPOL)",
+            "tendencia": "estable",
             "calculado_en": hoy,
             "origen": "SIDPOL"
         })
@@ -136,7 +136,7 @@ def ejecutar_ia_zonas_riesgo():
                 "nivel_riesgo": nivel_riesgo,
                 "total_incidentes": int(total_ml),
                 "delito_predominante": delito_ml,
-                "tendencia": "reciente (APP)",
+                "tendencia": "subiendo",
                 "calculado_en": hoy,
                 "origen": "APP_INCIDENTES"
             })
