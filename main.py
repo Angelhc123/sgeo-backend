@@ -169,3 +169,65 @@ def obtner_zonas_riesgo():
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error obteniendo zonas de riesgo: " + str(e))
 
+# ==========================================
+# RUTAS DE REPORTES E INCIDENTES
+# ==========================================
+
+from datetime import datetime
+
+class ReporteCiudadano(BaseModel):
+    sub_tipo: str # "HURTO", "ROBO", "EXTORSION"
+    modalidad: str = "PUNTEO/ARREBATO"
+    latitud: float
+    longitud: float
+    direccion: str = "Ubicacion reportada por GPS o seleccionada en mapa" # NUEVO
+    distrito: str = "TACNA"
+    descripcion: str = ""
+
+@app.post("/api/reportes")
+def crear_reporte(reporte: ReporteCiudadano):
+    """
+    Recibe un reporte del ciudadano desde la App y lo guarda como 'pendiente'.
+    """
+    try:
+        nuevo_reporte = {
+            "anonimo": True,
+            "tipo": "PATRIMONIO (DELITO)",
+            "sub_tipo": reporte.sub_tipo,
+            "modalidad": reporte.modalidad,
+            "ubicacion": {
+                "type": "Point",
+                "coordinates": [reporte.longitud, reporte.latitud] # GeoJSON pide primero Longitud, luego Latitud
+            },
+            "direccion": reporte.direccion, # Modificado
+            "distrito": reporte.distrito,
+            "fecha_hecho": datetime.utcnow(),
+            "descripcion": reporte.descripcion,
+            "estado": "pendiente", # Siempre nace como pendiente hasta que un policia verifique
+            "creado_en": datetime.utcnow()
+        }
+        resultado = db.reportes_ciudadano.insert_one(nuevo_reporte)
+        return {"status": "success", "id_reporte": str(resultado.inserted_id), "mensaje": "Reporte enviado con éxito"}
+    except Exception as e:
+        print("Error guardando reporte:", str(e))
+        raise HTTPException(status_code=500, detail="Error guardando reporte: " + str(e))
+
+@app.get("/api/map/puntos_exactos")
+def obtener_puntos_exactos():
+    """
+    Devuelve SOLO los reportes que hayan sido CONFIRMADOS por la policía.
+    Esto evita falsos positivos y sesgos en el mapa de calor de la IA.
+    """
+    try:
+        # Filtro muy importante: {"estado": "confirmado"}
+        reportes = list(db.reportes_ciudadano.find(
+            {"estado": "confirmado"}, 
+            {"_id": 1, "sub_tipo": 1, "ubicacion": 1}
+        ))
+        for rep in reportes:
+            rep["_id"] = str(rep["_id"])
+        
+        return {"status": "success", "puntos": reportes}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Error obteniendo los puntos: " + str(e))
+
