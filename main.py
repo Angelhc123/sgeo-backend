@@ -184,6 +184,7 @@ class ReporteCiudadano(BaseModel):
     distrito: str = "TACNA"
     descripcion: str = ""
     relacion_incidente: str = "Fui testigo presencial" # "Fui testigo presencial", "Familiar / Conocido"
+    usuario_id: str = None # NUEVO: Guardar quién hace el reporte
 
 @app.post("/api/reportes")
 def crear_reporte(reporte: ReporteCiudadano):
@@ -191,8 +192,11 @@ def crear_reporte(reporte: ReporteCiudadano):
     Recibe un reporte del ciudadano desde la App y lo guarda como 'pendiente'.
     """
     try:
+        from bson.objectid import ObjectId
+        
         nuevo_reporte = {
-            "anonimo": True,
+            "usuario_id": ObjectId(reporte.usuario_id) if reporte.usuario_id else None,
+            "anonimo": False if reporte.usuario_id else True,
             "tipo": "PATRIMONIO (DELITO)",
             "sub_tipo": reporte.sub_tipo,
             "modalidad": reporte.modalidad,
@@ -200,12 +204,12 @@ def crear_reporte(reporte: ReporteCiudadano):
                 "type": "Point",
                 "coordinates": [reporte.longitud, reporte.latitud] # GeoJSON pide primero Longitud, luego Latitud
             },
-            "direccion": reporte.direccion, 
+            "direccion": reporte.direccion,
             "distrito": reporte.distrito,
-            "relacion_incidente": reporte.relacion_incidente, # NUEVO: Guardamos quién lo reporta
+            "relacion_incidente": reporte.relacion_incidente,
             "fecha_hecho": datetime.utcnow(),
             "descripcion": reporte.descripcion,
-            "estado": "pendiente", # Siempre nace como pendiente hasta que un policia verifique
+            "estado": "pendiente",
             "creado_en": datetime.utcnow()
         }
         resultado = db.reportes_ciudadano.insert_one(nuevo_reporte)
@@ -214,6 +218,26 @@ def crear_reporte(reporte: ReporteCiudadano):
         print("Error guardando reporte:", str(e))
         raise HTTPException(status_code=500, detail="Error guardando reporte: " + str(e))
 
+@app.get("/api/reportes/mis_reportes/{usuario_id}")
+def obtener_mis_reportes(usuario_id: str):
+    """
+    Devuelve todos los reportes hechos por un ciudadano específico.
+    """
+    try:
+        from bson.objectid import ObjectId
+        reportes = list(db.reportes_ciudadano.find({"usuario_id": ObjectId(usuario_id)}).sort("creado_en", -1))
+        
+        for rep in reportes:
+            rep["_id"] = str(rep["_id"])
+            rep["usuario_id"] = str(rep["usuario_id"])
+            if "fecha_hecho" in rep:
+                rep["fecha_hecho"] = rep["fecha_hecho"].isoformat()
+            if "creado_en" in rep:
+                rep["creado_en"] = rep["creado_en"].isoformat()
+                
+        return {"status": "success", "reportes": reportes}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Error al buscar reportes de usuario: " + str(e))
 @app.get("/api/map/puntos_exactos")
 def obtener_puntos_exactos():
     """
