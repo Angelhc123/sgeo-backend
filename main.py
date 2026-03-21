@@ -184,7 +184,6 @@ class ReporteCiudadano(BaseModel):
     distrito: str = "TACNA"
     descripcion: str = ""
     relacion_incidente: str = "Fui testigo presencial" # "Fui testigo presencial", "Familiar / Conocido"
-    usuario_id: str = None # NUEVO: Guardar quién hace el reporte
 
 @app.post("/api/reportes")
 def crear_reporte(reporte: ReporteCiudadano):
@@ -192,11 +191,8 @@ def crear_reporte(reporte: ReporteCiudadano):
     Recibe un reporte del ciudadano desde la App y lo guarda como 'pendiente'.
     """
     try:
-        from bson.objectid import ObjectId
-        
         nuevo_reporte = {
-            "usuario_id": ObjectId(reporte.usuario_id) if reporte.usuario_id else None,
-            "anonimo": False if reporte.usuario_id else True,
+            "anonimo": True,
             "tipo": "PATRIMONIO (DELITO)",
             "sub_tipo": reporte.sub_tipo,
             "modalidad": reporte.modalidad,
@@ -204,12 +200,12 @@ def crear_reporte(reporte: ReporteCiudadano):
                 "type": "Point",
                 "coordinates": [reporte.longitud, reporte.latitud] # GeoJSON pide primero Longitud, luego Latitud
             },
-            "direccion": reporte.direccion,
+            "direccion": reporte.direccion, 
             "distrito": reporte.distrito,
-            "relacion_incidente": reporte.relacion_incidente,
+            "relacion_incidente": reporte.relacion_incidente, # NUEVO: Guardamos quién lo reporta
             "fecha_hecho": datetime.utcnow(),
             "descripcion": reporte.descripcion,
-            "estado": "pendiente",
+            "estado": "pendiente", # Siempre nace como pendiente hasta que un policia verifique
             "creado_en": datetime.utcnow()
         }
         resultado = db.reportes_ciudadano.insert_one(nuevo_reporte)
@@ -218,26 +214,6 @@ def crear_reporte(reporte: ReporteCiudadano):
         print("Error guardando reporte:", str(e))
         raise HTTPException(status_code=500, detail="Error guardando reporte: " + str(e))
 
-@app.get("/api/reportes/mis_reportes/{usuario_id}")
-def obtener_mis_reportes(usuario_id: str):
-    """
-    Devuelve todos los reportes hechos por un ciudadano específico.
-    """
-    try:
-        from bson.objectid import ObjectId
-        reportes = list(db.reportes_ciudadano.find({"usuario_id": ObjectId(usuario_id)}).sort("creado_en", -1))
-        
-        for rep in reportes:
-            rep["_id"] = str(rep["_id"])
-            rep["usuario_id"] = str(rep["usuario_id"])
-            if "fecha_hecho" in rep:
-                rep["fecha_hecho"] = rep["fecha_hecho"].isoformat()
-            if "creado_en" in rep:
-                rep["creado_en"] = rep["creado_en"].isoformat()
-                
-        return {"status": "success", "reportes": reportes}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al buscar reportes de usuario: " + str(e))
 @app.get("/api/map/puntos_exactos")
 def obtener_puntos_exactos():
     """
@@ -256,4 +232,39 @@ def obtener_puntos_exactos():
         return {"status": "success", "puntos": reportes}
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error obteniendo los puntos: " + str(e))
+
+from bson import ObjectId
+
+class UpdateUser(BaseModel):
+    nombre: str
+    email: EmailStr
+    telefono: str = ""
+
+@app.get("/api/usuarios/{user_id}")
+def obtener_usuario(user_id: str):
+    try:
+        user = db.usuarios.find_one({"_id": ObjectId(user_id)}, {"password_hash": 0})
+        if not user:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        user["_id"] = str(user["_id"])
+        return {"status": "success", "user": user}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="ID Invalido o error: " + str(e))
+
+@app.put("/api/usuarios/{user_id}")
+def actualizar_usuario(user_id: str, data: UpdateUser):
+    try:
+        resultado = db.usuarios.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {
+                "nombre": data.nombre,
+                "email": data.email,
+                "telefono": data.telefono
+            }}
+        )
+        if resultado.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        return {"status": "success", "message": "Datos actualizados"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Error actualizando: " + str(e))
 
