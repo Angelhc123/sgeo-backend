@@ -180,9 +180,10 @@ class ReporteCiudadano(BaseModel):
     modalidad: str = "PUNTEO/ARREBATO"
     latitud: float
     longitud: float
-    direccion: str = "Ubicacion reportada por GPS o seleccionada en mapa" # NUEVO
+    direccion: str = "Ubicacion reportada por mapa" 
     distrito: str = "TACNA"
     descripcion: str = ""
+    relacion_incidente: str = "Fui testigo presencial" # "Fui testigo presencial", "Familiar / Conocido"
 
 @app.post("/api/reportes")
 def crear_reporte(reporte: ReporteCiudadano):
@@ -199,8 +200,9 @@ def crear_reporte(reporte: ReporteCiudadano):
                 "type": "Point",
                 "coordinates": [reporte.longitud, reporte.latitud] # GeoJSON pide primero Longitud, luego Latitud
             },
-            "direccion": reporte.direccion, # Modificado
+            "direccion": reporte.direccion, 
             "distrito": reporte.distrito,
+            "relacion_incidente": reporte.relacion_incidente, # NUEVO: Guardamos quién lo reporta
             "fecha_hecho": datetime.utcnow(),
             "descripcion": reporte.descripcion,
             "estado": "pendiente", # Siempre nace como pendiente hasta que un policia verifique
