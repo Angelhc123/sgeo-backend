@@ -7,3 +7,7 @@ bcrypt
 scikit-learn
 pandas
 numpy
+requests
+beautifulsoup4
+openpyxl
+lxml
