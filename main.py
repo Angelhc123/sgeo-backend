@@ -105,6 +105,11 @@ def register(req: RegisterRequest):
     if existing_user:
         raise HTTPException(status_code=400, detail="Este correo ya está registrado")
     
+    # Verificar si existe el nombre de usuario
+    existing_name = db.usuarios.find_one({"nombre": req.nombre})
+    if existing_name:
+        raise HTTPException(status_code=400, detail="Usuario inválido: ya hay otra cuenta con este nombre")
+    
     # Crear usuario
     nuevo_usuario = {
         "nombre": req.nombre,
