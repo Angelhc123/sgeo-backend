@@ -9,17 +9,17 @@ from sklearn.cluster import DBSCAN
 load_dotenv()
 MONGO_URL = os.getenv("MONGO_URL")
 
-# Coordenadas maestras de los distritos de Tacna para la fase Macro
+# Coordenadas maestras de los distritos de Tacna para la fase Macro (Alineadas con centros poblados reales)
 COORDENADAS_DISTRITOS = {
     "TACNA": {"lat": -18.0146, "lng": -70.2536},
-    "ALTO DE LA ALIANZA": {"lat": -18.0000, "lng": -70.2400},
-    "CIUDAD NUEVA": {"lat": -17.9850, "lng": -70.2350},
-    "CORONEL GREGORIO ALBARRACIN LANCHIPA": {"lat": -18.0380, "lng": -70.2620},
-    "POCOLLAY": {"lat": -18.0050, "lng": -70.2250},
-    "CALANA": {"lat": -17.942, "lng": -70.183},
-    "PACHIA": {"lat": -17.892, "lng": -70.155},
-    "SAMA": {"lat": -17.844, "lng": -70.627},
-    "LA YARADA LOS PALOS": {"lat": -18.175, "lng": -70.473},
+    "ALTO DE LA ALIANZA": {"lat": -17.9922, "lng": -70.2436},
+    "CIUDAD NUEVA": {"lat": -17.9790, "lng": -70.2380},
+    "CORONEL GREGORIO ALBARRACIN LANCHIPA": {"lat": -18.0463, "lng": -70.2520},
+    "POCOLLAY": {"lat": -17.9961, "lng": -70.2185},
+    "CALANA": {"lat": -17.9422, "lng": -70.1834},
+    "PACHIA": {"lat": -17.8925, "lng": -70.1558},
+    "SAMA": {"lat": -17.8441, "lng": -70.6273},
+    "LA YARADA LOS PALOS": {"lat": -18.1755, "lng": -70.4735},
 }
 
 def ejecutar_ia_zonas_riesgo():
@@ -38,18 +38,32 @@ def ejecutar_ia_zonas_riesgo():
     nuevas_zonas = []
 
     # =========================================================================
-    # FASE 1: ANÁLISIS MACRO (Basado en Estadísticas e Histórico Gubernamental SIDPOL)
+    # FASE 1: ANÁLISIS MACRO (Basado en SIDPOL y UNIDAD DE FLAGRANCIA)
     # =========================================================================
-    estadisticas = list(db.estadisticas_sidpol.find({}))
+    estadisticas_sidpol = list(db.estadisticas_sidpol.find({}))
+    estadisticas_flagrancia = list(db.estadisticas_flagrancia.find({}))
+    
     agrupacion_distrital = {}
     
-    for est in estadisticas:
-        distrito = est.get("distrito", "TACNA").upper().strip()
+    # ---- 1.1 Procesar datos de SIDPOL ----
+    for est in estadisticas_sidpol:
+        distrito = str(est.get("distrito", "TACNA")).upper().strip()
         if distrito not in agrupacion_distrital:
             agrupacion_distrital[distrito] = {"total_delitos": 0, "tipos": []}
             
         agrupacion_distrital[distrito]["total_delitos"] += est.get("cantidad", 0)
-        agrupacion_distrital[distrito]["tipos"].append(est.get("sub_tipo", "DESCONOCIDO"))
+        agrupacion_distrital[distrito]["tipos"].append(str(est.get("sub_tipo", "DESCONOCIDO")))
+
+    # ---- 1.2 Procesar datos de FLAGRANCIA ----
+    for est in estadisticas_flagrancia:
+        distrito = str(est.get("distrito", "TACNA")).upper().strip()
+        if distrito not in agrupacion_distrital:
+            agrupacion_distrital[distrito] = {"total_delitos": 0, "tipos": []}
+            
+        # Flagrancia a veces trae la cantidad o es 1 por caso
+        cantidad = est.get("cantidad", 1)
+        agrupacion_distrital[distrito]["total_delitos"] += cantidad
+        agrupacion_distrital[distrito]["tipos"].append(str(est.get("delito", "DESCONOCIDO")))
 
     for distrito, data in agrupacion_distrital.items():
         total = data["total_delitos"]
@@ -70,7 +84,7 @@ def ejecutar_ia_zonas_riesgo():
                 "type": "Point",
                 "coordinates": [centro["lng"], centro["lat"]]
             },
-            # Las zonas MACRO son distritales, radios de 1 a 2 kilómetros
+            # Las zonas MACRO son distritales, radios de 1 a 2 kilómetros adaptativos
             "radio_metros": int(1000 + (total * 5)), 
             "distrito": distrito,
             "nivel_riesgo": nivel_riesgo,
@@ -78,7 +92,7 @@ def ejecutar_ia_zonas_riesgo():
             "delito_predominante": delito_principal,
             "tendencia": "estable",
             "calculado_en": hoy,
-            "origen": "SIDPOL"
+            "origen": "ESTADISTICAS_GUBERNAMENTALES"
         })
 
 
@@ -147,12 +161,12 @@ def ejecutar_ia_zonas_riesgo():
         zonas_macro = len(agrupacion_distrital)
         zonas_micro = len(nuevas_zonas) - zonas_macro
         
-        print(f"✅ Análisis completado. Guardadas {zonas_macro} Zonas Gubernamentales y {zonas_micro} Hotspots detectados de la App.")
+        print(f"✅ Análisis completado. Guardadas {zonas_macro} Zonas (SIDPOL+FLAGRANCIA) y {zonas_micro} Hotspots detectados de la App.")
         for z in nuevas_zonas:
-            icono = "🏢" if z["origen"] == "SIDPOL" else "🚨"
+            icono = "🏢" if z["origen"] == "ESTADISTICAS_GUBERNAMENTALES" else "🚨"
             print(f"   {icono} {z['distrito']} | {z['total_incidentes']} casos | Riesgo: {z['nivel_riesgo'].upper()} | {z['delito_predominante']}")
     else:
-        print("ℹ️ No hay datos suficientes ni en SIDPOL ni en la Aplicación para generar zonas.")
+        print("ℹ️ No hay datos suficientes (ni SIDPOL, ni Flagrancia, ni en la App) para generar zonas.")
 
 if __name__ == "__main__":
     ejecutar_ia_zonas_riesgo()
