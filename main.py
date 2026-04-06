@@ -53,6 +53,8 @@ class RegisterRequest(BaseModel):
     nombre: str
     email: EmailStr
     password: str
+    rol: str = "ciudadano"
+    is_active: bool = True
 
 # Funciones de utilidad para constraseñas
 def hash_password(password: str) -> str:
@@ -108,8 +110,8 @@ def register(req: RegisterRequest):
         "nombre": req.nombre,
         "email": req.email,
         "password_hash": hash_password(req.password),
-        "rol": "ciudadano", # Por defecto todo el que se registra es ciudadano
-        "activo": True,
+        "rol": req.rol,
+        "activo": req.is_active,
         "creado_en": dt.datetime.now(dt.timezone.utc)
     }
     
