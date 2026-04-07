@@ -5,6 +5,7 @@ from datetime import datetime
 from pymongo import MongoClient
 from dotenv import load_dotenv
 from sklearn.cluster import DBSCAN
+import difflib
 
 load_dotenv()
 MONGO_URL = os.getenv("MONGO_URL")
@@ -21,6 +22,36 @@ COORDENADAS_DISTRITOS = {
     "SAMA": {"lat": -17.8441, "lng": -70.6273},
     "LA YARADA LOS PALOS": {"lat": -18.1755, "lng": -70.4735},
 }
+
+def limpiar_distrito(nombre):
+    """Normaliza nombres de distritos usando coincidencias difusas (fuzzy matching)"""
+    if not nombre:
+        return "TACNA"
+        
+    nombre = str(nombre).upper().strip()
+    
+    trans = str.maketrans("ÁÉÍÓÚÄËÏÖÜ", "AEIOUAEIOU")
+    nombre = nombre.translate(trans)
+    
+    distritos_validos = list(COORDENADAS_DISTRITOS.keys())
+    
+    if nombre in distritos_validos:
+        return nombre
+        
+    # Atajos manuales
+    if "GREGORIO" in nombre or "ALBARRACI" in nombre:
+        return "CORONEL GREGORIO ALBARRACIN LANCHIPA"
+    if "YARADA" in nombre or "PALOS" in nombre:
+        return "LA YARADA LOS PALOS"
+    if "ALIANZA" in nombre:
+        return "ALTO DE LA ALIANZA"
+        
+    # Auto-corrector (Fuzzy Matching)
+    coincidencias = difflib.get_close_matches(nombre, distritos_validos, n=1, cutoff=0.65)
+    if coincidencias:
+        return coincidencias[0]
+        
+    return "TACNA"
 
 def ejecutar_ia_zonas_riesgo():
     if not MONGO_URL:
@@ -47,7 +78,7 @@ def ejecutar_ia_zonas_riesgo():
     
     # ---- 1.1 Procesar datos de SIDPOL ----
     for est in estadisticas_sidpol:
-        distrito = str(est.get("distrito", "TACNA")).upper().strip()
+        distrito = limpiar_distrito(est.get("distrito", "TACNA"))
         if distrito not in agrupacion_distrital:
             agrupacion_distrital[distrito] = {"total_delitos": 0, "tipos": []}
             
@@ -56,7 +87,7 @@ def ejecutar_ia_zonas_riesgo():
 
     # ---- 1.2 Procesar datos de FLAGRANCIA ----
     for est in estadisticas_flagrancia:
-        distrito = str(est.get("distrito", "TACNA")).upper().strip()
+        distrito = limpiar_distrito(est.get("distrito", "TACNA"))
         if distrito not in agrupacion_distrital:
             agrupacion_distrital[distrito] = {"total_delitos": 0, "tipos": []}
             
