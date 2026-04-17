@@ -4,6 +4,7 @@ from pymongo import MongoClient
 from pydantic import BaseModel, EmailStr
 import bcrypt
 import os
+import time
 import datetime as dt
 import threading
 from dotenv import load_dotenv
@@ -17,7 +18,7 @@ from motor_ia_espacial import ejecutar_ia_zonas_riesgo
 # Cargar variables de entorno
 load_dotenv()
 
-app = FastAPI(title="SGEO API - Geolocalización de Inseguridad")
+app = FastAPI(title="SGEO API - Geolocalizaci�n de Inseguridad")
 
 # Inicializamos Firebase al encender
 init_firebase()
@@ -25,8 +26,8 @@ init_firebase()
 # Evento de inicio: Ejecutar la IA de fondo una vez cuando el servidor encienda
 @app.on_event("startup")
 def startup_event():
-    print("🚀 Servidor iniciado. Ejecutando motor de IA espacial en segundo plano...")
-    # Usamos un hilo para que la IA matemática no bloquee el encendido del servidor
+    print("?? Servidor iniciado. Ejecutando motor de IA espacial en segundo plano...")
+    # Usamos un hilo para que la IA matem�tica no bloquee el encendido del servidor
     thread = threading.Thread(target=ejecutar_ia_zonas_riesgo)
     thread.start()
 
@@ -62,7 +63,7 @@ class RegisterRequest(BaseModel):
     rol: str = "ciudadano"
     is_active: bool = True
 
-# Funciones de utilidad para constraseñas
+# Funciones de utilidad para constrase�as
 def hash_password(password: str) -> str:
     salt = bcrypt.gensalt()
     pwd_bytes = password.encode('utf-8')
@@ -85,14 +86,14 @@ def login(req: LoginRequest):
     # Buscar usuario
     user = db.usuarios.find_one({"email": req.email})
     if not user:
-        raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
+        raise HTTPException(status_code=401, detail="Correo o contrase�a incorrectos")
     
     if not user.get("activo", True):
-        raise HTTPException(status_code=403, detail="Tu cuenta está inactiva")
+        raise HTTPException(status_code=403, detail="Tu cuenta est� inactiva")
 
     # Verificar password
     if not verify_password(req.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
+        raise HTTPException(status_code=401, detail="Correo o contrase�a incorrectos")
     
     return {
         "status": "success",
@@ -109,12 +110,12 @@ def register(req: RegisterRequest):
     # Verificar si existe el email
     existing_user = db.usuarios.find_one({"email": req.email})
     if existing_user:
-        raise HTTPException(status_code=400, detail="Este correo ya está registrado")
+        raise HTTPException(status_code=400, detail="Este correo ya est� registrado")
     
     # Verificar si existe el nombre de usuario
     existing_name = db.usuarios.find_one({"nombre": req.nombre})
     if existing_name:
-        raise HTTPException(status_code=400, detail="Usuario inválido: ya hay otra cuenta con este nombre")
+        raise HTTPException(status_code=400, detail="Usuario inv�lido: ya hay otra cuenta con este nombre")
     
     # Crear usuario
     nuevo_usuario = {
@@ -153,32 +154,37 @@ def test_db_connection():
 def desencadenar_ia_zonas(background_tasks: BackgroundTasks):
     """
     Ruta administrativa silenciosa. 
-    Lanza el motor matemático sin trabar la respuesta del servidor.
-    Se llamará automáticamente cada vez que un policía apruebe un nuevo incidente.
+    Lanza el motor matem�tico sin trabar la respuesta del servidor.
+    Se llamar� autom�ticamente cada vez que un polic�a apruebe un nuevo incidente.
     """
     background_tasks.add_task(ejecutar_ia_zonas_riesgo)
     return {"status": "success", "mensaje": "IA iniciada en segundo plano."}
 
+_cache_zonas = None
+_cache_time = 0
+
 @app.get("/api/map/zonas_riesgo")
 def obtner_zonas_riesgo():
-    """
-    Retorna los mapas de calor / zonas de riesgo generadas por la IA
-    (basadas en estadísticas del SIDPOL).
-    """
+    global _cache_zonas, _cache_time
+    if _cache_zonas is not None and (time.time() - _cache_time) < 600:
+        return {"status": "success", "zonas": _cache_zonas, "cached": True}
+        
     try:
         zonas = list(db.zonas_riesgo.find({}))
-        # Convertir ObjectIds y Fechas a strings para JSON
         for zona in zonas:
             zona["_id"] = str(zona["_id"])
             if "calculado_en" in zona:
-                zona["calculado_en"] = zona["calculado_en"].isoformat()
+                zona["calculado_en"] = zona["calculado_en"].isoformat()       
             if "periodo_analizado" in zona:
                 if "desde" in zona["periodo_analizado"]:
                     zona["periodo_analizado"]["desde"] = zona["periodo_analizado"]["desde"].isoformat()
                 if "hasta" in zona["periodo_analizado"]:
                     zona["periodo_analizado"]["hasta"] = zona["periodo_analizado"]["hasta"].isoformat()
         
-        return {"status": "success", "zonas": zonas}
+        _cache_zonas = zonas
+        _cache_time = time.time()
+        
+        return {"status": "success", "zonas": zonas, "cached": False}
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error obteniendo zonas de riesgo: " + str(e))
 
@@ -229,18 +235,59 @@ def crear_reporte(reporte: ReporteCiudadano):
             },
             "direccion": reporte.direccion,
             "distrito": reporte.distrito,
-            "relacion_incidente": reporte.relacion_incidente, # NUEVO: Guardamos quién lo reporta
+            "relacion_incidente": reporte.relacion_incidente, # NUEVO: Guardamos qui�n lo reporta
             "fecha_hecho": datetime.utcnow(),
             "descripcion": reporte.descripcion,
             "estado": "pendiente", # Siempre nace como pendiente hasta que un policia verifique
             "creado_en": datetime.utcnow()
         }
         resultado = db.reportes_ciudadano.insert_one(nuevo_reporte)
-        return {"status": "success", "id_reporte": str(resultado.inserted_id), "mensaje": "Reporte enviado con éxito"}
+        return {"status": "success", "id_reporte": str(resultado.inserted_id), "mensaje": "Reporte enviado con �xito"}
     except Exception as e:
         print("Error guardando reporte:", str(e))
         raise HTTPException(status_code=500, detail="Error guardando reporte: " + str(e))
+@app.post("/api/reportes/confirmar/{reporte_id}")
+def confirmar_reporte(reporte_id: str, background_tasks: BackgroundTasks):
+    """
+    Ruta para la Policia: Aprueba un reporte ciudadano y dispara la IA y un Push Notification con Coordenadas.
+    """
+    from bson.objectid import ObjectId
+    from bson.errors import InvalidId
+    try:
+        resultado = db.reportes_ciudadano.update_one(
+            {"_id": ObjectId(reporte_id)},
+            {"$set": {"estado": "confirmado", "confirmado_en": datetime.utcnow()}}
+        )
+        if resultado.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Reporte no encontrado o ya confirmado")
 
+        # 1. Traer la info del reporte para sacar las coordenadas
+        reporte = db.reportes_ciudadano.find_one({"_id": ObjectId(reporte_id)})
+        lat = None
+        lng = None
+        if reporte and "ubicacion" in reporte:
+            coords = reporte["ubicacion"].get("coordinates", [])
+            if len(coords) == 2:
+                lng, lat = coords[0], coords[1]
+
+        # 2. Mandar la notificacion a los ciudadanos con el punto GPS exacto
+        send_push_notification(
+            title="🚔 ALERTA: Nuevo Incidente Confirmado",
+            body=f"Se ha confirmado un incidente del tipo {reporte.get('sub_tipo', 'Desconocido')}. Toca para ver.",
+            tipo_alerta="incident",
+            topic="alertas_ciudadanos",
+            lat=lat,
+            lng=lng
+        )
+
+        # 3. Lanzar la IA silenciosamente
+        background_tasks.add_task(ejecutar_ia_zonas_riesgo)
+
+        return {"status": "success", "mensaje": "Reporte confirmado, IA recalculando zonas y Alerta enviada"}
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="ID de reporte invlido")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 @app.get("/api/reportes/mis_reportes/{user_id}")
 def obtener_mis_reportes(user_id: str):
     try:
@@ -249,7 +296,7 @@ def obtener_mis_reportes(user_id: str):
         try:
             user_obj_id = ObjectId(user_id)
         except InvalidId:
-            raise HTTPException(status_code=400, detail="ID de usuario inválido")
+            raise HTTPException(status_code=400, detail="ID de usuario inv�lido")
             
         reportes = list(db.reportes_ciudadano.find({"usuario_id": user_obj_id}).sort("creado_en", -1))
         for r in reportes:
@@ -269,7 +316,7 @@ def obtener_mis_reportes(user_id: str):
 @app.get("/api/map/puntos_exactos")
 def obtener_puntos_exactos():
     """
-    Devuelve SOLO los reportes que hayan sido CONFIRMADOS por la policía.
+    Devuelve SOLO los reportes que hayan sido CONFIRMADOS por la polic�a.
     Esto evita falsos positivos y sesgos en el mapa de calor de la IA.
     """
     try:
@@ -319,4 +366,5 @@ def actualizar_usuario(user_id: str, data: UpdateUser):
         return {"status": "success", "message": "Datos actualizados"}
     except Exception as e:
         raise HTTPException(status_code=400, detail="Error actualizando: " + str(e))
+
 
