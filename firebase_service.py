@@ -29,7 +29,7 @@ def init_firebase():
             else:
                 print("⚠️ ADVERTENCIA: No se encontraron credenciales de Firebase en Local ni en Railway.")
 
-def send_push_notification(title: str, body: str, tipo_alerta: str, topic="actualizaciones"):
+def send_push_notification(title: str, body: str, tipo_alerta: str, topic="actualizaciones", lat: float = None, lng: float = None):
     """
     Envía una notificación push masiva a todos los usuarios o a un tema en específico.
     topic='actualizaciones' es al que tu app Flutter se suscribió en el main.dart.
@@ -38,14 +38,20 @@ def send_push_notification(title: str, body: str, tipo_alerta: str, topic="actua
         print("Firebase no inicializado, no se pudo enviar el Push.")
         return False
 
+    payload_data = {
+        "type": tipo_alerta  # 'incident', 'risk_zone', 'update' (determina el color e icono en flutter)
+    }
+
+    if lat is not None and lng is not None:
+        payload_data["lat"] = str(lat)
+        payload_data["lng"] = str(lng)
+
     message = messaging.Message(
         notification=messaging.Notification(
             title=title,
             body=body,
         ),
-        data={
-            "type": tipo_alerta  # 'incident', 'risk_zone', 'update' (determina el color e icono en flutter)
-        },
+        data=payload_data,
         topic=topic, # 'actualizaciones' llega a todos los usuarios
     )
 
