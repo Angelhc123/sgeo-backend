@@ -8,6 +8,9 @@ import datetime as dt
 import threading
 from dotenv import load_dotenv
 
+# Importar servicios de Notificaciones
+from firebase_service import init_firebase, send_push_notification
+
 # Importar el motor de IA
 from motor_ia_espacial import ejecutar_ia_zonas_riesgo
 
@@ -15,6 +18,9 @@ from motor_ia_espacial import ejecutar_ia_zonas_riesgo
 load_dotenv()
 
 app = FastAPI(title="SGEO API - Geolocalización de Inseguridad")
+
+# Inicializamos Firebase al encender
+init_firebase()
 
 # Evento de inicio: Ejecutar la IA de fondo una vez cuando el servidor encienda
 @app.on_event("startup")
