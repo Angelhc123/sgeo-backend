@@ -196,6 +196,17 @@ def ejecutar_ia_zonas_riesgo():
         for z in nuevas_zonas:
             icono = "🏢" if z["origen"] == "ESTADISTICAS_GUBERNAMENTALES" else "🚨"
             print(f"   {icono} {z['distrito']} | {z['total_incidentes']} casos | Riesgo: {z['nivel_riesgo'].upper()} | {z['delito_predominante']}")
+            
+        try:
+            from firebase_service import send_push_notification
+            send_push_notification(
+                title="🗺️ Mapa de Zonas Actualizado",
+                body="La inteligencia artificial acaba de recalcular los puntos calientes y las áreas de peligro en la ciudad en base a nuevos reportes confirmados.",
+                tipo_alerta="update",
+                topic="alertas_ciudadanos"
+            )
+        except Exception as e:
+            print("No se pudo enviar la alerta de actualización de mapas:", e)
     else:
         print("ℹ️ No hay datos suficientes (ni SIDPOL, ni Flagrancia, ni en la App) para generar zonas.")
 
