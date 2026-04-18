@@ -313,6 +313,38 @@ def obtener_mis_reportes(user_id: str):
         print("Error en obtener_mis_reportes:", e)
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/api/reportes/{reporte_id}")
+def eliminar_mi_reporte(reporte_id: str):
+    """
+    Ruta para el ciudadano: Permite eliminar un reporte 'pendiente'.
+    """
+    try:
+        from bson.objectid import ObjectId
+        from bson.errors import InvalidId
+        try:
+            rep_obj_id = ObjectId(reporte_id)
+        except InvalidId:
+            raise HTTPException(status_code=400, detail="ID de reporte inválido")
+            
+        reporte = db.reportes_ciudadano.find_one({"_id": rep_obj_id})
+        if not reporte:
+            raise HTTPException(status_code=404, detail="Reporte no encontrado")
+            
+        if reporte.get("estado") != "pendiente":
+            raise HTTPException(status_code=400, detail="Solo se pueden eliminar reportes pendientes.")
+
+        resultado = db.reportes_ciudadano.delete_one({"_id": rep_obj_id})
+        if resultado.deleted_count == 1:
+            return {"status": "success", "message": "Reporte eliminado exitosamente."}
+        else:
+            raise HTTPException(status_code=500, detail="No se pudo eliminar el reporte.")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error al eliminar el reporte:", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/map/puntos_exactos")
 def obtener_puntos_exactos():
     """
