@@ -45,6 +45,8 @@ MONGO_URL = os.getenv("MONGO_URL")
 try:
     client = MongoClient(MONGO_URL)
     db = client["geocrimen_tacna"]
+    # Asegurar el índice para consultas geográficas
+    db.reportes_ciudadano.create_index([("ubicacion", "2dsphere")])
     print("Conectado exitosamente a MongoDB en Railway")
 except Exception as e:
     print(f"Error conectando a la base de datos: {e}")
@@ -282,6 +284,34 @@ def confirmar_reporte(reporte_id: str, background_tasks: BackgroundTasks):
             coords = reporte["ubicacion"].get("coordinates", [])
             if len(coords) == 2:
                 lng, lat = coords[0], coords[1]
+                
+                # 1.5. Agrupar reportes pendientes cercanos (radio de 100 metros) del mismo tipo
+                try:
+                    db.reportes_ciudadano.update_many(
+                        {
+                            "_id": {"$ne": ObjectId(reporte_id)},
+                            "estado": "pendiente",
+                            "sub_tipo": reporte.get("sub_tipo"),
+                            "ubicacion": {
+                                "$near": {
+                                    "$geometry": {
+                                        "type": "Point",
+                                        "coordinates": [lng, lat]
+                                    },
+                                    "$maxDistance": 100 # 100 metros a la redonda
+                                }
+                            }
+                        },
+                        {
+                            "$set": {
+                                "estado": "agrupado",
+                                "agrupado_con": reporte_id,
+                                "confirmado_en": datetime.utcnow()
+                            }
+                        }
+                    )
+                except Exception as grouping_err:
+                    print("Aviso: No se pudo agrupar reportes cercanos:", grouping_err)
 
         # 2. Mandar la notificacion a los ciudadanos con el punto GPS exacto
         send_push_notification(
@@ -301,6 +331,28 @@ def confirmar_reporte(reporte_id: str, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=400, detail="ID de reporte invlido")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/reportes/rechazar/{reporte_id}")
+def rechazar_reporte(reporte_id: str):
+    """
+    Ruta para la Policia: Rechaza un reporte ciudadano.
+    """
+    from bson.objectid import ObjectId
+    from bson.errors import InvalidId
+    try:
+        resultado = db.reportes_ciudadano.update_one(
+            {"_id": ObjectId(reporte_id)},
+            {"$set": {"estado": "rechazado"}}
+        )
+        if resultado.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Reporte no encontrado o ya procesado")
+        
+        return {"status": "success", "mensaje": "Rechazado correctamente"}
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="ID de reporte invlido")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/reportes/mis_reportes/{user_id}")
 def obtener_mis_reportes(user_id: str):
     try:
