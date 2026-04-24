@@ -285,7 +285,7 @@ def confirmar_reporte(reporte_id: str, background_tasks: BackgroundTasks):
             if len(coords) == 2:
                 lng, lat = coords[0], coords[1]
                 
-                # 1.5. Agrupar reportes pendientes cercanos (radio de 100 metros) del mismo tipo
+                # 1.5. Agrupar reportes pendientes cercanos (radio de 500 metros) del mismo tipo
                 try:
                     db.reportes_ciudadano.update_many(
                         {
@@ -298,7 +298,7 @@ def confirmar_reporte(reporte_id: str, background_tasks: BackgroundTasks):
                                         "type": "Point",
                                         "coordinates": [lng, lat]
                                     },
-                                    "$maxDistance": 100 # 100 metros a la redonda
+                                    "$maxDistance": 500 # 500 metros a la redonda
                                 }
                             }
                         },
@@ -346,6 +346,41 @@ def rechazar_reporte(reporte_id: str):
         )
         if resultado.modified_count == 0:
             raise HTTPException(status_code=404, detail="Reporte no encontrado o ya procesado")
+
+        reporte = db.reportes_ciudadano.find_one({"_id": ObjectId(reporte_id)})
+        lat = None
+        lng = None
+        if reporte and "ubicacion" in reporte:
+            coords = reporte["ubicacion"].get("coordinates", [])
+            if len(coords) == 2:
+                lng, lat = coords[0], coords[1]
+                
+                # Agrupar reportes "invalidados/falsos" en radio 500m
+                try:
+                    db.reportes_ciudadano.update_many(
+                        {
+                            "_id": {"$ne": ObjectId(reporte_id)},
+                            "estado": "pendiente",
+                            "sub_tipo": reporte.get("sub_tipo"),
+                            "ubicacion": {
+                                "$near": {
+                                    "$geometry": {
+                                        "type": "Point",
+                                        "coordinates": [lng, lat]
+                                    },
+                                    "$maxDistance": 500
+                                }
+                            }
+                        },
+                        {
+                            "$set": {
+                                "estado": "rechazado",
+                                "rechazado_con": reporte_id
+                            }
+                        }
+                    )
+                except Exception as grouping_err:
+                    print("Aviso: No se pudo rechazar reportes cercanos:", grouping_err)
         
         return {"status": "success", "mensaje": "Rechazado correctamente"}
     except InvalidId:
