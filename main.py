@@ -212,6 +212,7 @@ class ReporteCiudadano(BaseModel):
 def crear_reporte(reporte: ReporteCiudadano):
     """
     Recibe un reporte del ciudadano desde la App y lo guarda como 'pendiente'.
+    Limita a 5 reportes por dia por usuario (si esta logeado).
     """
     try:
         user_id_obj = None
@@ -220,6 +221,18 @@ def crear_reporte(reporte: ReporteCiudadano):
                 from bson.objectid import ObjectId
                 from bson.errors import InvalidId
                 user_id_obj = ObjectId(reporte.usuario_id)
+                
+                # Check rate limit (5 per day)
+                hoy_inicio = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+                reportes_hoy = db.reportes_ciudadano.count_documents({
+                    "usuario_id": user_id_obj,
+                    "creado_en": {"$gte": hoy_inicio}
+                })
+                if reportes_hoy >= 5:
+                    from fastapi import HTTPException
+                    raise HTTPException(status_code=429, detail="Has alcanzado el límite de 5 reportes por día.")
+            except HTTPException:
+                raise
             except Exception:
                 pass
                 
@@ -355,7 +368,7 @@ def obtener_puntos_exactos():
         # Filtro muy importante: {"estado": "confirmado"}
         reportes = list(db.reportes_ciudadano.find(
             {"estado": "confirmado"}, 
-            {"_id": 1, "sub_tipo": 1, "ubicacion": 1}
+            {"_id": 1, "sub_tipo": 1, "ubicacion": 1, "estado": 1}
         ))
         for rep in reportes:
             rep["_id"] = str(rep["_id"])
@@ -363,6 +376,23 @@ def obtener_puntos_exactos():
         return {"status": "success", "puntos": reportes}
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error obteniendo los puntos: " + str(e))
+
+@app.get("/api/reportes/policia")
+def obtener_reportes_policia():
+    """
+    Devuelve TODOS los reportes (pendientes y confirmados) para la vista del mapa de policia y validaciones.
+    """
+    try:
+        reportes = list(db.reportes_ciudadano.find(
+            {"estado": {"$in": ["pendiente", "confirmado"]}}, 
+            {"_id": 1, "sub_tipo": 1, "ubicacion": 1, "estado": 1, "descripcion": 1, "direccion": 1, "fecha_hecho": 1, "anonimo": 1, "modalidad": 1}
+        ))
+        for rep in reportes:
+            rep["_id"] = str(rep["_id"])
+        
+        return {"status": "success", "puntos": reportes, "reportes": reportes}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Error obteniendo reportes: " + str(e))
 
 from bson import ObjectId
 
