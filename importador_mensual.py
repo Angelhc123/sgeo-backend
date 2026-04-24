@@ -44,8 +44,22 @@ def insertar_datos_mongodb(df, nombre_coleccion, mapeo_columnas):
     if 'anio' in df.columns and 'mes' in df.columns:
         periodos = df[['anio', 'mes']].drop_duplicates().dropna().to_dict('records')
         for p in periodos:
-            resultado_borrado = coleccion.delete_many({"anio": int(p['anio']), "mes": int(p['mes'])})
-            print(f"Limpieza previa mensual: Se limpiaron {resultado_borrado.deleted_count} registros de {int(p['mes'])}/{int(p['anio'])} en {nombre_coleccion}.")
+            mes_insertar = int(p['mes'])
+            anio_insertar = int(p['anio'])
+            
+            mes_anterior = mes_insertar - 1
+            anio_anterior = anio_insertar
+            if mes_anterior == 0:
+                mes_anterior = 12
+                anio_anterior -= 1
+                
+            res_ant = coleccion.delete_many({"anio": anio_anterior, "mes": mes_anterior})
+            if res_ant.deleted_count > 0:
+                print(f"Limpieza de mes anterior: Se borraron {res_ant.deleted_count} registros viejos de {mes_anterior}/{anio_anterior} en {nombre_coleccion}.")
+            
+            res_act = coleccion.delete_many({"anio": anio_insertar, "mes": mes_insertar})
+            if res_act.deleted_count > 0:
+                print(f"Limpieza de reemplazo: Se limpiaron {res_act.deleted_count} registros repetidos de {mes_insertar}/{anio_insertar} en {nombre_coleccion}.")
     
     documentos = df.to_dict('records')
     ahora = datetime.now(timezone.utc)
