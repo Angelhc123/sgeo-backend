@@ -515,5 +515,47 @@ def actualizar_usuario(user_id: str, data: UpdateUser):
         return {"status": "success", "message": "Datos actualizados"}
     except Exception as e:
         raise HTTPException(status_code=400, detail="Error actualizando: " + str(e))
+@app.get("/api/admin/dashboard_stats")
+def obtener_dashboard_stats(filtro_tiempo: str = 'Todos'):
+    try:
+        from datetime import datetime, timedelta
+        import pytz
 
+        # Configurar filtro de tiempo
+        query = {}
+        now = datetime.now(pytz.utc)
+        if filtro_tiempo == 'Mes Actual':
+            inicio = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            query["creado_en"] = {"$gte": inicio}
+        elif filtro_tiempo == 'Ultimos 3 Meses':
+            inicio = now - timedelta(days=90)
+            query["creado_en"] = {"$gte": inicio}
+        elif filtro_tiempo == 'Ultimos 6 Meses':
+            inicio = now - timedelta(days=180)
+            query["creado_en"] = {"$gte": inicio}
 
+        # Realizar agregaciones
+        pipeline_total = [{"$match": query}, {"$count": "total"}]
+        pipeline_estado = [{"$match": query}, {"$group": {"_id": "$estado", "count": {"$sum": 1}}}]
+        pipeline_tipo = [{"$match": query}, {"$group": {"_id": "$sub_tipo", "count": {"$sum": 1}}}]
+
+        total_cursor = list(db.reportes_ciudadano.aggregate(pipeline_total))
+        total = total_cursor[0]["total"] if total_cursor else 0
+
+        estado_cursor = list(db.reportes_ciudadano.aggregate(pipeline_estado))
+        por_estado = {doc["_id"] or "desconocido": doc["count"] for doc in estado_cursor}
+
+        tipo_cursor = list(db.reportes_ciudadano.aggregate(pipeline_tipo))
+        por_tipo = {doc["_id"] or "desconocido": doc["count"] for doc in tipo_cursor}
+
+        return {
+            "status": "success",
+            "stats": {
+                "total": total,
+                "por_estado": por_estado,
+                "por_tipo": por_tipo
+            }
+        }
+    except Exception as e:
+        print("Error dashboard stats:", e)
+        raise HTTPException(status_code=500, detail=str(e))
