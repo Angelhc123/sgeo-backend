@@ -18,7 +18,7 @@ from motor_ia_espacial import ejecutar_ia_zonas_riesgo
 # Cargar variables de entorno
 load_dotenv()
 
-app = FastAPI(title="SGEO API - Geolocalizaci�n de Inseguridad")
+app = FastAPI(title="SGEO API - Geolocalizacion de Inseguridad")
 
 # Inicializamos Firebase al encender
 init_firebase()
@@ -27,7 +27,7 @@ init_firebase()
 @app.on_event("startup")
 def startup_event():
     print("?? Servidor iniciado. Ejecutando motor de IA espacial en segundo plano...")
-    # Usamos un hilo para que la IA matem�tica no bloquee el encendido del servidor
+    # Usamos un hilo para que la IA matematica no bloquee el encendido del servidor
     thread = threading.Thread(target=ejecutar_ia_zonas_riesgo)
     thread.start()
 
@@ -65,7 +65,7 @@ class RegisterRequest(BaseModel):
     rol: str = "ciudadano"
     is_active: bool = True
 
-# Funciones de utilidad para constrase�as
+# Funciones de utilidad para constraseñas
 def hash_password(password: str) -> str:
     salt = bcrypt.gensalt()
     pwd_bytes = password.encode('utf-8')
@@ -88,14 +88,14 @@ def login(req: LoginRequest):
     # Buscar usuario
     user = db.usuarios.find_one({"email": req.email})
     if not user:
-        raise HTTPException(status_code=401, detail="Correo o contrase�a incorrectos")
+        raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
     
     if not user.get("activo", True):
-        raise HTTPException(status_code=403, detail="Tu cuenta est� inactiva")
+        raise HTTPException(status_code=403, detail="Tu cuenta esta inactiva")
 
     # Verificar password
     if not verify_password(req.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Correo o contrase�a incorrectos")
+        raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
     
     return {
         "status": "success",
@@ -112,12 +112,12 @@ def register(req: RegisterRequest):
     # Verificar si existe el email
     existing_user = db.usuarios.find_one({"email": req.email})
     if existing_user:
-        raise HTTPException(status_code=400, detail="Este correo ya est� registrado")
+        raise HTTPException(status_code=400, detail="Este correo ya esta registrado")
     
     # Verificar si existe el nombre de usuario
     existing_name = db.usuarios.find_one({"nombre": req.nombre})
     if existing_name:
-        raise HTTPException(status_code=400, detail="Usuario inv�lido: ya hay otra cuenta con este nombre")
+        raise HTTPException(status_code=400, detail="Usuario invalido: ya hay otra cuenta con este nombre")
     
     # Crear usuario
     nuevo_usuario = {
@@ -156,8 +156,8 @@ def test_db_connection():
 def desencadenar_ia_zonas(background_tasks: BackgroundTasks):
     """
     Ruta administrativa silenciosa. 
-    Lanza el motor matem�tico sin trabar la respuesta del servidor.
-    Se llamar� autom�ticamente cada vez que un polic�a apruebe un nuevo incidente.
+    Lanza el motor matematico sin trabar la respuesta del servidor.
+    Se llamar automaticamente cada vez que un policia apruebe un nuevo incidente.
     """
     background_tasks.add_task(ejecutar_ia_zonas_riesgo)
     return {"status": "success", "mensaje": "IA iniciada en segundo plano."}
@@ -250,14 +250,14 @@ def crear_reporte(reporte: ReporteCiudadano):
             },
             "direccion": reporte.direccion,
             "distrito": reporte.distrito,
-            "relacion_incidente": reporte.relacion_incidente, # NUEVO: Guardamos qui�n lo reporta
+            "relacion_incidente": reporte.relacion_incidente, # NUEVO: Guardamos quien lo reporta
             "fecha_hecho": datetime.utcnow(),
             "descripcion": reporte.descripcion,
             "estado": "pendiente", # Siempre nace como pendiente hasta que un policia verifique
             "creado_en": datetime.utcnow()
         }
         resultado = db.reportes_ciudadano.insert_one(nuevo_reporte)
-        return {"status": "success", "id_reporte": str(resultado.inserted_id), "mensaje": "Reporte enviado con �xito"}
+        return {"status": "success", "id_reporte": str(resultado.inserted_id), "mensaje": "Reporte enviado con exito"}
     except Exception as e:
         print("Error guardando reporte:", str(e))
         raise HTTPException(status_code=500, detail="Error guardando reporte: " + str(e))
@@ -396,7 +396,7 @@ def obtener_mis_reportes(user_id: str):
         try:
             user_obj_id = ObjectId(user_id)
         except InvalidId:
-            raise HTTPException(status_code=400, detail="ID de usuario inv�lido")
+            raise HTTPException(status_code=400, detail="ID de usuario invalido")
             
         reportes = list(db.reportes_ciudadano.find({"usuario_id": user_obj_id}).sort("creado_en", -1))
         for r in reportes:
@@ -448,7 +448,7 @@ def eliminar_mi_reporte(reporte_id: str):
 @app.get("/api/map/puntos_exactos")
 def obtener_puntos_exactos():
     """
-    Devuelve SOLO los reportes que hayan sido CONFIRMADOS por la polic�a.
+    Devuelve SOLO los reportes que hayan sido CONFIRMADOS por la policia.
     Esto evita falsos positivos y sesgos en el mapa de calor de la IA.
     """
     try:
