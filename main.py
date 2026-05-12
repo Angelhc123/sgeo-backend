@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from firebase_service import init_firebase, send_push_notification
 
 # Importar el motor de IA
-from motor_ia_espacial import ejecutar_ia_zonas_riesgo
+from motor_ia_zonas_riesgo import ejecutar_ia_zonas_riesgo
 
 # Cargar variables de entorno
 load_dotenv()
@@ -285,6 +285,29 @@ def confirmar_reporte(reporte_id: str, background_tasks: BackgroundTasks):
             if len(coords) == 2:
                 lng, lat = coords[0], coords[1]
                 
+                # 1.2 Copiar este reporte validado a la tabla estandarizada HISTORIAL_DELITOS
+                try:
+                    db.historial_delitos.insert_one({
+                        "ubicacion": reporte["ubicacion"],
+                        "direccion": reporte.get("direccion", "Ubicación reportada vía app"),
+                        "tipo_via": "Otros",
+                        "departamento": reporte.get("departamento", "TACNA"),
+                        "provincia": reporte.get("provincia", "TACNA"),
+                        "distrito": reporte.get("distrito", "TACNA"),
+                        "ubigeo": reporte.get("ubigeo", ""),
+                        "fecha_hecho": reporte.get("fecha_hecho", datetime.utcnow()),
+                        "turno": "No especificado",
+                        "tipo": reporte.get("tipo", "PATRIMONIO (DELITO)"),
+                        "sub_tipo": reporte.get("sub_tipo", "DESCONOCIDO"),
+                        "modalidad": reporte.get("modalidad", ""),
+                        "estado_coord": "VALIDADO APP",
+                        "estado": "confirmado",
+                        "fuente": "ciudadano",
+                        "creado_en": datetime.utcnow()
+                    })
+                except Exception as ex_import:
+                    print("No se pudo copiar el reporte validado al historial:", ex_import)
+
                 # 1.5. Agrupar reportes pendientes cercanos (radio de 500 metros) del mismo tipo
                 try:
                     db.reportes_ciudadano.update_many(
@@ -564,25 +587,31 @@ def obtener_dashboard_stats(filtro_tiempo: str = 'Todos'):
 def obtener_sidpol_stats():
     try:
         pipeline_distrito = [
-            {"$group": {"_id": "$distrito", "total": {"$sum": "$cantidad"}}},
+            {"$group": {"_id": "$distrito", "total": {"$sum": 1}}},
             {"$sort": {"total": -1}},
             {"$limit": 5}
         ]
         
         pipeline_tipo = [
-            {"$group": {"_id": "$sub_tipo", "total": {"$sum": "$cantidad"}}},
+            {"$group": {"_id": "$sub_tipo", "total": {"$sum": 1}}},
             {"$sort": {"total": -1}},
             {"$limit": 5}
         ]
         
         pipeline_tiempo = [
-            {"$group": {"_id": {"anio": "$anio", "mes": "$mes"}, "total": {"$sum": "$cantidad"}}},
+            {"$group": {
+                "_id": {
+                    "anio": {"$year": "$fecha_hecho"}, 
+                    "mes": {"$month": "$fecha_hecho"}
+                }, 
+                "total": {"$sum": 1}
+            }},
             {"$sort": {"_id.anio": 1, "_id.mes": 1}}
         ]
 
-        distritos = list(db.estadisticas_sidpol_historico.aggregate(pipeline_distrito))
-        tipos = list(db.estadisticas_sidpol_historico.aggregate(pipeline_tipo))
-        tiempo = list(db.estadisticas_sidpol_historico.aggregate(pipeline_tiempo))
+        distritos = list(db.historial_delitos.aggregate(pipeline_distrito))
+        tipos = list(db.historial_delitos.aggregate(pipeline_tipo))
+        tiempo = list(db.historial_delitos.aggregate(pipeline_tiempo))
 
         return {
             "status": "success",
@@ -604,9 +633,16 @@ def obtener_sidpol_prediccion():
         from sklearn.linear_model import LinearRegression
 
         pipeline = [
-            {"$group": {"_id": {"distrito": "$distrito", "anio": "$anio", "mes": "$mes"}, "total": {"$sum": "$cantidad"}}}
+            {"$group": {
+                "_id": {
+                    "distrito": "$distrito", 
+                    "anio": {"$year": "$fecha_hecho"}, 
+                    "mes": {"$month": "$fecha_hecho"}
+                }, 
+                "total": {"$sum": 1}
+            }}
         ]
-        data = list(db.estadisticas_sidpol_historico.aggregate(pipeline))
+        data = list(db.historial_delitos.aggregate(pipeline))
         if not data:
             return {"status": "success", "predicciones_globales": [], "distrito_riesgo": "Sin datos", "valor_riesgo": 0}
 
