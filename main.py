@@ -497,10 +497,15 @@ def obtener_historial_puntos():
         # Traemos solo los campos necesarios para el mapa
         puntos = list(db.historial_delitos.find(
             {"estado_coord": {"$ne": "SIN COORDENADA"}},
-            {"_id": 1, "sub_tipo": 1, "ubicacion": 1, "fuente": 1}
+            {"_id": 1, "sub_tipo": 1, "ubicacion": 1, "fuente": 1, "fecha_hecho": 1, "modalidad": 1, "turno": 1}
         ))
         for p in puntos:
             p["_id"] = str(p["_id"])
+            if "fecha_hecho" in p and p["fecha_hecho"] is not None:
+                try:
+                    p["fecha_hecho"] = p["fecha_hecho"].isoformat()
+                except:
+                    p["fecha_hecho"] = str(p["fecha_hecho"])
         
         return {"status": "success", "puntos": puntos}
     except Exception as e:
