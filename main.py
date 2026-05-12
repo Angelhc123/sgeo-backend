@@ -168,7 +168,7 @@ _cache_time = 0
 @app.get("/api/map/zonas_riesgo")
 def obtner_zonas_riesgo():
     global _cache_zonas, _cache_time
-    if _cache_zonas is not None and (time.time() - _cache_time) < 600:
+    if _cache_zonas is not None and (time.time() - _cache_time) < 60: # Bajado a 60 segundos para pruebas y menor delay
         return {"status": "success", "zonas": _cache_zonas, "cached": True}
         
     try:
