@@ -98,9 +98,9 @@ def ejecutar_ia_zonas_riesgo():
         df = pd.DataFrame(puntos_reales)
         coords_rad = np.radians(df[['lat', 'lng']].values)
         
-        # eps = ~400 metros de búsqueda en radianes 
-        epsilon = 0.4 / 6371.0 
-        min_samples = 8 
+        # eps = ~150 metros de búsqueda en radianes (Evita el "efecto cadena" interconectando toda la ciudad)
+        epsilon = 0.15 / 6371.0 
+        min_samples = 5 
         
         dbscan = DBSCAN(eps=epsilon, min_samples=min_samples, algorithm='ball_tree', metric='haversine')
         df['cluster'] = dbscan.fit_predict(coords_rad)
@@ -125,7 +125,7 @@ def ejecutar_ia_zonas_riesgo():
                     "type": "Point",
                     "coordinates": [float(centro_lng), float(centro_lat)]
                 },
-                "radio_metros": int(max(250, min(650, total_ml * 8))), 
+                "radio_metros": int(max(150, min(350, 100 + (total_ml * 5)))), 
                 "distrito": "Zona Caliente Detectada",
                 "nivel_riesgo": nivel_riesgo,
                 "total_incidentes": int(total_ml),
