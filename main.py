@@ -487,6 +487,25 @@ def obtener_puntos_exactos():
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error obteniendo los puntos: " + str(e))
 
+@app.get("/api/map/historial_puntos")
+def obtener_historial_puntos():
+    """
+    Devuelve todos los puntos del historial de delitos (ArcGIS + Ciudadanos confirmados) 
+    para mostrarlos en el mapa cuando el usuario hace zoom a detalle.
+    """
+    try:
+        # Traemos solo los campos necesarios para el mapa
+        puntos = list(db.historial_delitos.find(
+            {"estado_coord": {"$ne": "SIN COORDENADA"}},
+            {"_id": 1, "sub_tipo": 1, "ubicacion": 1, "fuente": 1}
+        ))
+        for p in puntos:
+            p["_id"] = str(p["_id"])
+        
+        return {"status": "success", "puntos": puntos}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Error obteniendo historial: " + str(e))
+
 @app.get("/api/reportes/policia")
 def obtener_reportes_policia():
     """
