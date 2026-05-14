@@ -217,13 +217,14 @@ def crear_reporte(reporte: ReporteCiudadano):
     Limita a 5 reportes por dia por usuario (si esta logeado).
     """
     try:
+        from bson.objectid import ObjectId
+        from bson.errors import InvalidId
+        from fastapi import HTTPException
+        
         user_id_obj = None
-        if hasattr(reporte, 'usuario_id') and reporte.usuario_id:
+        if reporte.usuario_id and reporte.usuario_id.strip():
             try:
-                from bson.objectid import ObjectId
-                from bson.errors import InvalidId
-                user_id_obj = ObjectId(reporte.usuario_id)
-                
+                user_id_obj = ObjectId(reporte.usuario_id.strip())
                 # Check rate limit (5 per day)
                 hoy_inicio = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
                 reportes_hoy = db.reportes_ciudadano.count_documents({
@@ -231,15 +232,12 @@ def crear_reporte(reporte: ReporteCiudadano):
                     "creado_en": {"$gte": hoy_inicio}
                 })
                 if reportes_hoy >= 5:
-                    from fastapi import HTTPException
                     raise HTTPException(status_code=429, detail="Has alcanzado el límite de 5 reportes por día.")
-            except HTTPException:
-                raise
-            except Exception:
-                pass
-                
+            except InvalidId:
+                pass # Si el ID no es valido, se pasa como nulo
+
         nuevo_reporte = {
-            "anonimo": True,
+            "anonimo": user_id_obj is None,
             "usuario_id": user_id_obj,
             "tipo": "PATRIMONIO (DELITO)",
             "sub_tipo": reporte.sub_tipo,
@@ -250,14 +248,16 @@ def crear_reporte(reporte: ReporteCiudadano):
             },
             "direccion": reporte.direccion,
             "distrito": reporte.distrito,
-            "relacion_incidente": reporte.relacion_incidente, # NUEVO: Guardamos quien lo reporta
+            "relacion_incidente": reporte.relacion_incidente,
             "fecha_hecho": datetime.utcnow(),
             "descripcion": reporte.descripcion,
-            "estado": "pendiente", # Siempre nace como pendiente hasta que un policia verifique
+            "estado": "pendiente",
             "creado_en": datetime.utcnow()
         }
         resultado = db.reportes_ciudadano.insert_one(nuevo_reporte)
         return {"status": "success", "id_reporte": str(resultado.inserted_id), "mensaje": "Reporte enviado con exito"}
+    except HTTPException:
+        raise
     except Exception as e:
         print("Error guardando reporte:", str(e))
         raise HTTPException(status_code=500, detail="Error guardando reporte: " + str(e))
