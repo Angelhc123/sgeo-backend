@@ -45,8 +45,12 @@ MONGO_URL = os.getenv("MONGO_URL")
 try:
     client = MongoClient(MONGO_URL)
     db = client["geocrimen_tacna"]
-    # Asegurar el índice para consultas geográficas
+    # Asegurar los índices para consultas geográficas y ordenamientos rápidos
     db.reportes_ciudadano.create_index([("ubicacion", "2dsphere")])
+    db.reportes_ciudadano.create_index([("creado_en", -1)])
+    db.historial_delitos.create_index([("ubicacion", "2dsphere")])
+    db.historial_delitos.create_index([("creado_en", -1)])
+    db.historial_delitos.create_index([("distrito", 1)])
     print("Conectado exitosamente a MongoDB en Railway")
 except Exception as e:
     print(f"Error conectando a la base de datos: {e}")
