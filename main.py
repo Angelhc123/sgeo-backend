@@ -247,6 +247,8 @@ def crear_reporte(reporte: ReporteCiudadano):
                 "coordinates": [reporte.longitud, reporte.latitud] # GeoJSON pide primero Longitud, luego Latitud
             },
             "direccion": reporte.direccion,
+            "departamento": "TACNA",
+            "provincia": "TACNA",
             "distrito": reporte.distrito,
             "relacion_incidente": reporte.relacion_incidente,
             "fecha_hecho": datetime.utcnow(),
