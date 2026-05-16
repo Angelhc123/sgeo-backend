@@ -7,6 +7,13 @@ from dotenv import load_dotenv
 from sklearn.cluster import DBSCAN
 import difflib
 
+# Importar calculador de tendencia real del motor predictivo
+try:
+    from predictive_context_engine import calcular_tendencia_real
+    _HAS_PREDICTIVE = True
+except ImportError:
+    _HAS_PREDICTIVE = False
+
 load_dotenv()
 MONGO_URL = os.getenv("MONGO_URL")
 
@@ -120,6 +127,15 @@ def ejecutar_ia_zonas_riesgo():
             elif total_ml >= 10: nivel_riesgo = "medio"
             else: nivel_riesgo = "bajo"
 
+            # Calcular tendencia real en vez de hardcodear
+            if _HAS_PREDICTIVE:
+                try:
+                    tendencia_calc = calcular_tendencia_real(db, float(centro_lat), float(centro_lng), radio_m=500)
+                except Exception:
+                    tendencia_calc = "estable"
+            else:
+                tendencia_calc = "estable"
+
             nuevas_zonas.append({
                 "centroide": {
                     "type": "Point",
@@ -130,7 +146,7 @@ def ejecutar_ia_zonas_riesgo():
                 "nivel_riesgo": nivel_riesgo,
                 "total_incidentes": int(total_ml),
                 "delito_predominante": delito_ml,
-                "tendencia": "subiendo",
+                "tendencia": tendencia_calc,
                 "calculado_en": hoy,
                 "origen": "APP_HOTSPOT_ML"
             })
