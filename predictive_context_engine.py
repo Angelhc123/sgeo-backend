@@ -106,12 +106,12 @@ class TemporalAnalyzer:
             {"$match": match_stage},
             {"$project": {
                 "hora": {"$hour": "$fecha_hecho"},
-                "sub_tipo": 1
+                "subtipo_hecho": 1
             }},
             {"$group": {
                 "_id": "$hora",
                 "total": {"$sum": 1},
-                "tipos": {"$push": "$sub_tipo"}
+                "tipos": {"$push": "$subtipo_hecho"}
             }},
             {"$sort": {"_id": 1}}
         ]
