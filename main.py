@@ -15,6 +15,9 @@ from firebase_service import init_firebase, send_push_notification
 # Importar el motor de IA
 from motor_ia_zonas_riesgo import ejecutar_ia_zonas_riesgo
 
+# Importar rutas del módulo predictivo contextual
+from predictive_routes import router as predictive_router
+
 # Cargar variables de entorno
 load_dotenv()
 
@@ -22,6 +25,9 @@ app = FastAPI(title="SGEO API - Geolocalizacion de Inseguridad")
 
 # Inicializamos Firebase al encender
 init_firebase()
+
+# Registrar rutas del módulo predictivo de seguridad contextual
+app.include_router(predictive_router)
 
 # Evento de inicio: Ejecutar la IA de fondo una vez cuando el servidor encienda
 @app.on_event("startup")
@@ -729,3 +735,4 @@ def obtener_sidpol_prediccion():
     except Exception as e:
         print("Error sidpol predict:", e)
         raise HTTPException(status_code=500, detail=str(e))
+        
