@@ -210,15 +210,22 @@ from typing import Optional
 from bson.errors import InvalidId
 
 class ReporteCiudadano(BaseModel):
-    sub_tipo: str # "HURTO", "ROBO", "EXTORSION"
-    modalidad: str = "PUNTEO/ARREBATO"
+    subtipo_hecho: str # Solo "HURTO" o "ROBO"
+    modalidad_hecho: Optional[str] = None
     latitud: float
     longitud: float
-    direccion: str = "Ubicacion reportada por mapa"
-    distrito: str = "TACNA"
+    direccion_hecho: str = "Ubicacion reportada por mapa"
+    distrito_hecho: str = "TACNA"
+    provincia_hecho: str = "TACNA"
+    departamento_hecho: str = "TACNA"
     descripcion: str = ""
-    relacion_incidente: str = "Fui testigo presencial" # "Fui testigo presencial", "Familiar / Conocido"
     usuario_id: Optional[str] = None
+    precision_gps: float = 10.0
+    fuente: str = "CIUDADANO_APP"
+    gravedad: str = "MEDIA"
+    device_timestamp: str = ""
+    timezone: str = "America/Lima"
+    metadata_contextual: dict = {}
 
 @app.post("/api/reportes")
 def crear_reporte(reporte: ReporteCiudadano):
@@ -246,25 +253,64 @@ def crear_reporte(reporte: ReporteCiudadano):
             except InvalidId:
                 pass # Si el ID no es valido, se pasa como nulo
 
+        import pytz
+        
+        server_now = datetime.utcnow()
+        try:
+            tz = pytz.timezone(reporte.timezone)
+        except Exception:
+            tz = pytz.timezone("America/Lima")
+            
+        local_time = server_now.replace(tzinfo=pytz.utc).astimezone(tz)
+        
+        hora = local_time.hour
+        if 0 <= hora <= 5:
+            turno_hecho = "MADRUGADA"
+        elif 6 <= hora <= 11:
+            turno_hecho = "MAÑANA"
+        elif 12 <= hora <= 17:
+            turno_hecho = "TARDE"
+        else:
+            turno_hecho = "NOCHE"
+            
+        dias = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
+        dia_semana = dias[local_time.weekday()]
+
         nuevo_reporte = {
             "anonimo": user_id_obj is None,
             "usuario_id": user_id_obj,
-            "tipo": "PATRIMONIO (DELITO)",
-            "sub_tipo": reporte.sub_tipo,
-            "modalidad": reporte.modalidad,
+            "tipo_hecho": "PATRIMONIO (DELITO)",
+            "subtipo_hecho": reporte.subtipo_hecho.upper(),
+            "modalidad_hecho": reporte.modalidad_hecho.upper() if reporte.modalidad_hecho else "NO ESPECIFICADO",
             "ubicacion": {
                 "type": "Point",
-                "coordinates": [reporte.longitud, reporte.latitud] # GeoJSON pide primero Longitud, luego Latitud
+                "coordinates": [reporte.longitud, reporte.latitud]
             },
-            "direccion": reporte.direccion,
-            "departamento": "TACNA",
-            "provincia": "TACNA",
-            "distrito": reporte.distrito,
-            "relacion_incidente": reporte.relacion_incidente,
-            "fecha_hecho": datetime.utcnow(),
+            "direccion_hecho": reporte.direccion_hecho,
+            "distrito_hecho": reporte.distrito_hecho.upper() if reporte.distrito_hecho else "TACNA",
+            "provincia_hecho": reporte.provincia_hecho.upper(),
+            "departamento_hecho": reporte.departamento_hecho.upper(),
             "descripcion": reporte.descripcion,
             "estado": "pendiente",
-            "creado_en": datetime.utcnow()
+            "fuente": reporte.fuente,
+            "gravedad": reporte.gravedad,
+            
+            # Temporalidad estricta (IA/SIDPOL Compatible)
+            "fecha_hora_hecho": server_now,
+            "timestamp_utc": server_now.isoformat() + "Z",
+            "hora_local": local_time.strftime("%H:%M"),
+            "anio": local_time.year,
+            "mes": local_time.month,
+            "dia": local_time.day,
+            "dia_semana": dia_semana,
+            "turno_hecho": turno_hecho,
+            
+            # Metadatos tecnicos y auditoria
+            "precision_gps": reporte.precision_gps,
+            "metadata_contextual": reporte.metadata_contextual,
+            "device_timestamp": reporte.device_timestamp,
+            "creado_en": server_now,
+            "actualizado_en": server_now
         }
         resultado = db.reportes_ciudadano.insert_one(nuevo_reporte)
         return {"status": "success", "id_reporte": str(resultado.inserted_id), "mensaje": "Reporte enviado con exito"}
@@ -301,21 +347,31 @@ def confirmar_reporte(reporte_id: str, background_tasks: BackgroundTasks):
                 try:
                     db.historial_delitos.insert_one({
                         "ubicacion": reporte["ubicacion"],
-                        "direccion": reporte.get("direccion", "Ubicación reportada vía app"),
+                        "direccion": reporte.get("direccion_hecho", "Ubicación reportada vía app"),
                         "tipo_via": "Otros",
-                        "departamento": reporte.get("departamento", "TACNA"),
-                        "provincia": reporte.get("provincia", "TACNA"),
-                        "distrito": reporte.get("distrito", "TACNA"),
+                        "departamento": reporte.get("departamento_hecho", "TACNA"),
+                        "provincia": reporte.get("provincia_hecho", "TACNA"),
+                        "distrito": reporte.get("distrito_hecho", "TACNA"),
                         "ubigeo": reporte.get("ubigeo", ""),
-                        "fecha_hecho": reporte.get("fecha_hecho", datetime.utcnow()),
-                        "turno": "No especificado",
-                        "tipo": reporte.get("tipo", "PATRIMONIO (DELITO)"),
-                        "sub_tipo": reporte.get("sub_tipo", "DESCONOCIDO"),
-                        "modalidad": reporte.get("modalidad", ""),
+                        "fecha_hecho": reporte.get("fecha_hora_hecho", datetime.utcnow()),
+                        "turno": reporte.get("turno_hecho", "NO ESPECIFICADO"),
+                        "tipo_hecho": reporte.get("tipo_hecho", "PATRIMONIO (DELITO)"),
+                        "subtipo_hecho": reporte.get("subtipo_hecho", "DESCONOCIDO"),
+                        "modalidad_hecho": reporte.get("modalidad_hecho", "NO ESPECIFICADO"),
                         "estado_coord": "VALIDADO APP",
                         "estado": "confirmado",
-                        "fuente": "ciudadano",
-                        "creado_en": datetime.utcnow()
+                        "fuente": reporte.get("fuente", "CIUDADANO_APP"),
+                        "creado_en": datetime.utcnow(),
+                        # Preservar metadatos temporales y analíticos para AI
+                        "anio": reporte.get("anio"),
+                        "mes": reporte.get("mes"),
+                        "dia": reporte.get("dia"),
+                        "dia_semana": reporte.get("dia_semana"),
+                        "timestamp_utc": reporte.get("timestamp_utc"),
+                        "hora_local": reporte.get("hora_local"),
+                        "precision_gps": reporte.get("precision_gps"),
+                        "gravedad": reporte.get("gravedad"),
+                        "metadata_contextual": reporte.get("metadata_contextual")
                     })
                 except Exception as ex_import:
                     print("No se pudo copiar el reporte validado al historial:", ex_import)
@@ -326,7 +382,7 @@ def confirmar_reporte(reporte_id: str, background_tasks: BackgroundTasks):
                         {
                             "_id": {"$ne": ObjectId(reporte_id)},
                             "estado": "pendiente",
-                            "sub_tipo": reporte.get("sub_tipo"),
+                            "subtipo_hecho": reporte.get("subtipo_hecho"),
                             "ubicacion": {
                                 "$near": {
                                     "$geometry": {
@@ -351,7 +407,7 @@ def confirmar_reporte(reporte_id: str, background_tasks: BackgroundTasks):
         # 2. Mandar la notificacion a los ciudadanos con el punto GPS exacto
         send_push_notification(
             title="🚔 ALERTA: Nuevo Incidente Confirmado",
-            body=f"Se ha confirmado un incidente del tipo {reporte.get('sub_tipo', 'Desconocido')}. Toca para ver.",
+            body=f"Se ha confirmado un incidente del tipo {reporte.get('subtipo_hecho', 'Desconocido')}. Toca para ver.",
             tipo_alerta="incident",
             topic="alertas_ciudadanos",
             lat=lat,
@@ -396,7 +452,7 @@ def rechazar_reporte(reporte_id: str):
                         {
                             "_id": {"$ne": ObjectId(reporte_id)},
                             "estado": "pendiente",
-                            "sub_tipo": reporte.get("sub_tipo"),
+                            "subtipo_hecho": reporte.get("subtipo_hecho"),
                             "ubicacion": {
                                 "$near": {
                                     "$geometry": {
@@ -490,7 +546,7 @@ def obtener_puntos_exactos():
         # Filtro muy importante: {"estado": "confirmado"}
         reportes = list(db.reportes_ciudadano.find(
             {"estado": "confirmado"}, 
-            {"_id": 1, "sub_tipo": 1, "ubicacion": 1, "estado": 1}
+            {"_id": 1, "subtipo_hecho": 1, "ubicacion": 1, "estado": 1}
         ))
         for rep in reportes:
             rep["_id"] = str(rep["_id"])
@@ -509,7 +565,7 @@ def obtener_historial_puntos():
         # Traemos solo los campos necesarios para el mapa
         puntos = list(db.historial_delitos.find(
             {"estado_coord": {"$ne": "SIN COORDENADA"}},
-            {"_id": 1, "sub_tipo": 1, "ubicacion": 1, "fuente": 1, "fecha_hecho": 1, "modalidad": 1, "turno": 1}
+            {"_id": 1, "subtipo_hecho": 1, "ubicacion": 1, "fuente": 1, "fecha_hora_hecho": 1, "modalidad_hecho": 1, "turno_hecho": 1}
         ))
         for p in puntos:
             p["_id"] = str(p["_id"])
@@ -531,7 +587,7 @@ def obtener_reportes_policia():
     try:
         reportes = list(db.reportes_ciudadano.find(
             {"estado": {"$in": ["pendiente", "confirmado"]}}, 
-            {"_id": 1, "sub_tipo": 1, "ubicacion": 1, "estado": 1, "descripcion": 1, "direccion": 1, "fecha_hecho": 1, "anonimo": 1, "modalidad": 1}
+            {"_id": 1, "subtipo_hecho": 1, "ubicacion": 1, "estado": 1, "descripcion": 1, "direccion_hecho": 1, "fecha_hora_hecho": 1, "anonimo": 1, "modalidad_hecho": 1}
         ))
         for rep in reportes:
             rep["_id"] = str(rep["_id"])
@@ -596,7 +652,7 @@ def obtener_dashboard_stats(filtro_tiempo: str = 'Todos'):
         # Realizar agregaciones
         pipeline_total = [{"$match": query}, {"$count": "total"}]
         pipeline_estado = [{"$match": query}, {"$group": {"_id": "$estado", "count": {"$sum": 1}}}]
-        pipeline_tipo = [{"$match": query}, {"$group": {"_id": "$sub_tipo", "count": {"$sum": 1}}}]
+        pipeline_tipo = [{"$match": query}, {"$group": {"_id": "$subtipo_hecho", "count": {"$sum": 1}}}]
 
         total_cursor = list(db.reportes_ciudadano.aggregate(pipeline_total))
         total = total_cursor[0]["total"] if total_cursor else 0
@@ -629,7 +685,7 @@ def obtener_sidpol_stats():
         ]
         
         pipeline_tipo = [
-            {"$group": {"_id": "$sub_tipo", "total": {"$sum": 1}}},
+            {"$group": {"_id": "$subtipo_hecho", "total": {"$sum": 1}}},
             {"$sort": {"total": -1}},
             {"$limit": 5}
         ]
@@ -735,4 +791,3 @@ def obtener_sidpol_prediccion():
     except Exception as e:
         print("Error sidpol predict:", e)
         raise HTTPException(status_code=500, detail=str(e))
-        
