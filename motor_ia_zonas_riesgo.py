@@ -88,7 +88,7 @@ def ejecutar_ia_zonas_riesgo():
             "ubicacion": {"$exists": True},
             "estado_coord": {"$ne": "SIN COORDENADA"}
         }, 
-        {"ubicacion": 1, "sub_tipo": 1}
+        {"ubicacion": 1, "subtipo_hecho": 1}
     )
     
     for inc in incidentes_cursor:
@@ -97,7 +97,7 @@ def ejecutar_ia_zonas_riesgo():
             puntos_reales.append({
                 "lng": coords[0],
                 "lat": coords[1],
-                "sub_tipo": inc.get("sub_tipo", "DESCONOCIDO")
+                "subtipo_hecho": inc.get("subtipo_hecho", "DESCONOCIDO")
             })
     
     # Configuramos mínimo de reportes cercanos para formar un clúster. 
@@ -120,7 +120,7 @@ def ejecutar_ia_zonas_riesgo():
             # Centro matemático exacto de los reportes unificados
             centro_lat = grupo['lat'].mean()
             centro_lng = grupo['lng'].mean()
-            delito_ml = grupo['sub_tipo'].mode()[0]
+            delito_ml = grupo['subtipo_hecho'].mode()[0]
 
             if total_ml >= 50: nivel_riesgo = "critico"
             elif total_ml >= 25: nivel_riesgo = "alto"
