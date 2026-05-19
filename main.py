@@ -546,10 +546,15 @@ def obtener_puntos_exactos():
         # Filtro muy importante: {"estado": "confirmado"}
         reportes = list(db.reportes_ciudadano.find(
             {"estado": "confirmado"}, 
-            {"_id": 1, "subtipo_hecho": 1, "ubicacion": 1, "estado": 1}
+            {"_id": 1, "subtipo_hecho": 1, "ubicacion": 1, "estado": 1, "fecha_hora_hecho": 1}
         ))
         for rep in reportes:
             rep["_id"] = str(rep["_id"])
+            if "fecha_hora_hecho" in rep and rep["fecha_hora_hecho"]:
+                try:
+                    rep["fecha_hora_hecho"] = rep["fecha_hora_hecho"].isoformat()
+                except:
+                    rep["fecha_hora_hecho"] = str(rep["fecha_hora_hecho"])
         
         return {"status": "success", "puntos": reportes}
     except Exception as e:
@@ -565,7 +570,7 @@ def obtener_historial_puntos():
         # Traemos solo los campos necesarios para el mapa
         puntos = list(db.historial_delitos.find(
             {"estado_coord": {"$ne": "SIN COORDENADA"}},
-            {"_id": 1, "subtipo_hecho": 1, "ubicacion": 1, "fuente": 1, "fecha_hora_hecho": 1, "modalidad_hecho": 1, "turno_hecho": 1}
+            {"_id": 1, "subtipo_hecho": 1, "ubicacion": 1, "fuente": 1, "fecha_hecho": 1, "modalidad_hecho": 1, "turno_hecho": 1}
         ))
         for p in puntos:
             p["_id"] = str(p["_id"])
