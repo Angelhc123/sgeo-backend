@@ -23,25 +23,14 @@ import pandas as pd
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 from math import radians, cos, sin, asin, sqrt
+from utils.time_helpers import get_turno, get_turno_weight, TURNOS, TURNO_WEIGHTS
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  CONSTANTES TEMPORALES
 # ═══════════════════════════════════════════════════════════════════════════
 
-TURNOS = {
-    "madrugada": (0, 5),
-    "mañana":    (6, 11),
-    "tarde":     (12, 17),
-    "noche":     (18, 23),
-}
-
-TURNO_WEIGHTS = {
-    "madrugada": 1.5,
-    "mañana":    0.7,
-    "tarde":     0.8,
-    "noche":     1.2,
-}
+# Las constantes de turnos se importan desde utils.time_helpers
 
 DIAS_SEMANA = {
     0: "lunes", 1: "martes", 2: "miercoles", 3: "jueves",
@@ -68,17 +57,7 @@ def haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
     return 2 * R * asin(sqrt(a))
 
 
-def get_turno(hora: int) -> str:
-    """Devuelve el turno según la hora (0-23)."""
-    for turno, (inicio, fin) in TURNOS.items():
-        if inicio <= hora <= fin:
-            return turno
-    return "noche"
-
-
-def get_turno_weight(hora: int) -> float:
-    """Peso de riesgo según el turno horario."""
-    return TURNO_WEIGHTS.get(get_turno(hora), 1.0)
+# Las funciones get_turno y get_turno_weight se importan desde utils.time_helpers
 
 
 # ═══════════════════════════════════════════════════════════════════════════

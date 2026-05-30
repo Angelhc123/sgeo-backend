@@ -1,11 +1,9 @@
-import os
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from pymongo import MongoClient
-from dotenv import load_dotenv
 from sklearn.cluster import DBSCAN
-import difflib
+from config.database import db
+from utils.string_helpers import limpiar_distrito
 
 # Importar calculador de tendencia real del motor predictivo
 try:
@@ -14,65 +12,11 @@ try:
 except ImportError:
     _HAS_PREDICTIVE = False
 
-load_dotenv()
-MONGO_URL = os.getenv("MONGO_URL")
-
-# Coordenadas maestras de los distritos de Tacna para la fase Macro (Alineadas con centros poblados reales)
-COORDENADAS_DISTRITOS = {
-    "TACNA": {"lat": -18.0146, "lng": -70.2536},
-    "ALTO DE LA ALIANZA": {"lat": -17.9922, "lng": -70.2436},
-    "CIUDAD NUEVA": {"lat": -17.9790, "lng": -70.2380},
-    "CORONEL GREGORIO ALBARRACIN LANCHIPA": {"lat": -18.0463, "lng": -70.2520},
-    "POCOLLAY": {"lat": -17.9961, "lng": -70.2185},
-    "CALANA": {"lat": -17.9422, "lng": -70.1834},
-    "PACHIA": {"lat": -17.8925, "lng": -70.1558},
-    "SAMA": {"lat": -17.8441, "lng": -70.6273},
-    "LA YARADA LOS PALOS": {"lat": -18.1755, "lng": -70.4735},
-}
-
-def limpiar_distrito(nombre):
-    """Normaliza nombres de distritos usando coincidencias difusas (fuzzy matching)"""
-    if not nombre:
-        return "TACNA"
-        
-    nombre = str(nombre).upper().strip()
-    
-    trans = str.maketrans("ÁÉÍÓÚÄËÏÖÜ", "AEIOUAEIOU")
-    nombre = nombre.translate(trans)
-    
-    distritos_validos = list(COORDENADAS_DISTRITOS.keys())
-    
-    if nombre in distritos_validos:
-        return nombre
-        
-    # Atajos manuales
-    if "GREGORIO" in nombre or "ALBARRACI" in nombre:
-        return "CORONEL GREGORIO ALBARRACIN LANCHIPA"
-    if "YARADA" in nombre or "PALOS" in nombre:
-        return "LA YARADA LOS PALOS"
-    if "ALIANZA" in nombre:
-        return "ALTO DE LA ALIANZA"
-        
-    # Auto-corrector (Fuzzy Matching)
-    coincidencias = difflib.get_close_matches(nombre, distritos_validos, n=1, cutoff=0.65)
-    if coincidencias:
-        return coincidencias[0]
-        
-    return "TACNA"
-
 def ejecutar_ia_zonas_riesgo():
-    if not MONGO_URL:
-        print("❌ Error: Faltan credenciales MONGO_URL")
-        return
-
-    client = MongoClient(MONGO_URL)
-    db = client['geocrimen_tacna']
     hoy = datetime.utcnow()
 
     print("🧠 Iniciando Procesamiento Analítico Espacial Estricto usando el Historial de Delitos...")
     
-    # Limpiamos las zonas de riesgo previas para recalcularlas todas
-    db.zonas_riesgo.delete_many({})
     nuevas_zonas = []
 
     # =========================================================================
@@ -151,25 +95,30 @@ def ejecutar_ia_zonas_riesgo():
                 "origen": "APP_HOTSPOT_ML"
             })
 
-    # Guardado de la data fusionada
+    # Guardado de la data fusionada de forma atómica
     if nuevas_zonas:
-        db.zonas_riesgo.insert_many(nuevas_zonas)
-        
-        print(f"✅ Análisis completado. Guardados {len(nuevas_zonas)} Hotspots generados por Machine Learning.")
-        for z in nuevas_zonas[:15]:  # Imprimimos solo las 15 primeras para no saturar la consola
-            print(f"   🚨 {z['distrito']} | {z['total_incidentes']} casos | Riesgo: {z['nivel_riesgo'].upper()} | {z['delito_predominante']}")
-        if len(nuevas_zonas) > 15: print("   ...")
-            
         try:
-            from firebase_service import send_push_notification
-            send_push_notification(
-                title="🗺️ Mapa de Zonas Actualizado",
-                body="La inteligencia artificial acaba de recalcular los puntos calientes en Tacna en base a la nueva data histórica confirmada.",
-                tipo_alerta="update",
-                topic="alertas_ciudadanos"
-            )
+            # Primero borramos, luego insertamos (simulando transacción simple)
+            db.zonas_riesgo.delete_many({})
+            db.zonas_riesgo.insert_many(nuevas_zonas)
+            
+            print(f"✅ Análisis completado. Guardados {len(nuevas_zonas)} Hotspots generados por Machine Learning.")
+            for z in nuevas_zonas[:15]:  # Imprimimos solo las 15 primeras para no saturar la consola
+                print(f"   🚨 {z['distrito']} | {z['total_incidentes']} casos | Riesgo: {z['nivel_riesgo'].upper()} | {z['delito_predominante']}")
+            if len(nuevas_zonas) > 15: print("   ...")
+                
+            try:
+                from firebase_service import send_push_notification
+                send_push_notification(
+                    title="🗺️ Mapa de Zonas Actualizado",
+                    body="La inteligencia artificial acaba de recalcular los puntos calientes en Tacna en base a la nueva data histórica confirmada.",
+                    tipo_alerta="update",
+                    topic="alertas_ciudadanos"
+                )
+            except Exception as e:
+                print("No se pudo enviar la alerta de actualización de mapas:", e)
         except Exception as e:
-            print("No se pudo enviar la alerta de actualización de mapas:", e)
+            print("❌ Error fatal al guardar nuevas zonas de riesgo, base de datos de zonas mantenida o corrupta: ", e)
     else:
         print("ℹ️ No hay datos suficientes para generar zonas.")
 

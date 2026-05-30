@@ -10,10 +10,7 @@ Se integra al main.py existente via app.include_router().
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 import time
-import os
-from pymongo import MongoClient
-from dotenv import load_dotenv
-
+from config.database import db as _db
 from predictive_context_engine import (
     TemporalAnalyzer,
     SafetyScoreCalculator,
@@ -21,16 +18,10 @@ from predictive_context_engine import (
     SafeHoursCalculator,
 )
 
-load_dotenv()
-
 router = APIRouter(prefix="/api/predictive", tags=["Predictive Intelligence"])
 
-# ── Conexión a MongoDB (reutiliza la misma instancia) ──
-MONGO_URL = os.getenv("MONGO_URL")
-_client = MongoClient(MONGO_URL)
-_db = _client["geocrimen_tacna"]
-
 # ── Caché inteligente con TTL ──
+# TODO: migrar a Redis para multi-worker
 _cache_store = {}
 CACHE_TTL = {
     "safety_score": 30,        # 30 segundos (datos en tiempo real)
@@ -207,11 +198,11 @@ async def get_safe_hours(
     cached = _get_cached(cache_key)
     if cached:
         return {"status": "success", "cached": True, **cached}
-
+    
     try:
         result = SafeHoursCalculator.calculate(_db, distrito)
         _set_cache(cache_key, result)
         return {"status": "success", "cached": False, **result}
     except Exception as e:
         print(f"Error safe_hours: {e}")
-        raise HTTPException(status_code=500, detail=f"Error calculando horarios seguros: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error calculando safe hours: {str(e)}")
