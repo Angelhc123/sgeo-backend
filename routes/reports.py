@@ -143,16 +143,21 @@ def eliminar_mi_reporte(reporte_id: str):
 @router.get("/policia")
 def obtener_reportes_policia():
     """
-    Devuelve TODOS los reportes (pendientes y confirmados) para la vista del mapa de policia y validaciones.
+    Devuelve TODOS los reportes (pendientes, confirmados y rechazados) para el mapa y las
+    validaciones del rol policia. Se agrego "rechazado" al filtro (antes se excluia por completo,
+    lo que hacia imposible construir un tab de Historial o un contador de "rechazados hoy") y se
+    proyectan gravedad/confirmado_en/rechazado_en para los contadores y el detalle del reporte.
     """
     try:
         reportes = list(db.reportes_ciudadano.find(
-            {"estado": {"$in": ["pendiente", "confirmado"]}}, 
-            {"_id": 1, "subtipo_hecho": 1, "ubicacion": 1, "estado": 1, "descripcion": 1, "direccion_hecho": 1, "fecha_hora_hecho": 1, "anonimo": 1, "modalidad_hecho": 1}
+            {"estado": {"$in": ["pendiente", "confirmado", "rechazado"]}},
+            {"_id": 1, "subtipo_hecho": 1, "ubicacion": 1, "estado": 1, "descripcion": 1, "direccion_hecho": 1,
+             "fecha_hora_hecho": 1, "anonimo": 1, "modalidad_hecho": 1, "gravedad": 1,
+             "confirmado_en": 1, "rechazado_en": 1}
         ))
         for rep in reportes:
             rep["_id"] = str(rep["_id"])
-        
+
         return {"status": "success", "puntos": reportes, "reportes": reportes}
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error obteniendo reportes: " + str(e))
