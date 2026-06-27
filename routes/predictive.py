@@ -21,7 +21,10 @@ from predictive_context_engine import (
 router = APIRouter(prefix="/api/predictive", tags=["Predictive Intelligence"])
 
 # ── Caché inteligente con TTL ──
-# TODO: migrar a Redis para multi-worker
+# TODO: migrar a Redis para multi-worker.
+# ADVERTENCIA: igual que en routes/maps.py, este dict vive en el proceso de un solo worker.
+# Hoy el Procfile corre uvicorn sin --workers (1 proceso), pero si se escala horizontalmente
+# (mas replicas en Railway) cada una mantendria su propia copia de esta cache.
 _cache_store = {}
 CACHE_TTL = {
     "safety_score": 30,        # 30 segundos (datos en tiempo real)
