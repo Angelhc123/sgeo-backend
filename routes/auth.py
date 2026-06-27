@@ -6,6 +6,11 @@ import datetime as dt
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+# Nota: login solo verifica credenciales y retorna los datos del usuario; no emite token.
+# No existe JWT ni middleware de sesion en ningun otro endpoint del backend (SECRET_KEY
+# en .env esta declarada pero no se usa). Cualquier endpoint que reciba un user_id/usuario_id
+# confia en el valor que envia el cliente, sin verificar que corresponda a una sesion autenticada.
+
 @router.post("/login")
 def login(req: LoginRequest, db = Depends(get_db)):
     # Buscar usuario
