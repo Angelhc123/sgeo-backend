@@ -1,3 +1,4 @@
+# Fix: el except generico envolvia el HTTPException(404) propio y lo reempaquetaba como 400.
 from fastapi import APIRouter, HTTPException
 from bson.objectid import ObjectId
 from config.database import db
@@ -13,6 +14,8 @@ def obtener_usuario(user_id: str):
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
         user["_id"] = str(user["_id"])
         return {"status": "success", "user": user}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail="ID Invalido o error: " + str(e))
 
