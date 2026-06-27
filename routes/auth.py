@@ -1,7 +1,12 @@
+# Se agrega flujo de aprobacion policial: email post-registro y gate de login para policias
+# inactivos (sin tocar RegisterRequest ni la estructura de la respuesta de ciudadano).
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Depends, status
 from models.auth_schemas import LoginRequest, RegisterRequest
 from utils.crypto import hash_password, verify_password
 from config.database import get_db
+from services import email_service
 import datetime as dt
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -17,14 +22,18 @@ def login(req: LoginRequest, db = Depends(get_db)):
     user = db.usuarios.find_one({"email": req.email})
     if not user:
         raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
-    
+
     if not user.get("activo", True):
+        if user.get("rol") == "policia":
+            if user.get("motivo_rechazo"):
+                raise HTTPException(status_code=403, detail=f"Tu cuenta fue rechazada. Motivo: {user['motivo_rechazo']}")
+            raise HTTPException(status_code=403, detail="Tu cuenta está siendo revisada por el administrador.")
         raise HTTPException(status_code=403, detail="Tu cuenta esta inactiva")
 
     # Verificar password
     if not verify_password(req.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
-    
+
     return {
         "status": "success",
         "usuario": {
@@ -58,6 +67,27 @@ def register(req: RegisterRequest, db = Depends(get_db)):
     }
     
     result = db.usuarios.insert_one(nuevo_usuario)
+
+    if req.rol == "policia":
+        # Update post-insert (no toca RegisterRequest ni el insert_one anterior): marca la
+        # cuenta como pendiente de revision y la desactiva hasta que el admin la apruebe.
+        # aprobacion_pendiente permite al admin filtrar sin tocar el schema de registro.
+        db.usuarios.update_one(
+            {"_id": result.inserted_id},
+            {"$set": {"aprobacion_pendiente": True, "activo": False}}
+        )
+
+        try:
+            asyncio.run(email_service.solicitar_datos_policia(email=req.email, nombre=req.nombre))
+        except Exception as e:
+            print(f"Aviso: fallo el envio de email de verificacion a {req.email}: {e}")
+
+        return {
+            "status": "success",
+            "mensaje": "Registro recibido. Revisa tu correo para completar la verificación.",
+            "usuario_id": str(result.inserted_id)
+        }
+
     return {
         "status": "success",
         "mensaje": "Usuario registrado correctamente",
