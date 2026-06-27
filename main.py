@@ -32,9 +32,18 @@ app = FastAPI(title="SGEO API", lifespan=lifespan)
 
 init_firebase()
 
+# CORS abierto solo en desarrollo local (ENV=development). En cualquier otro caso se usa
+# una lista restringida. Nota: la app movil (Android) hace llamadas HTTP nativas, que NO
+# estan sujetas a CORS (eso solo aplica a navegadores); esta lista solo importa si se
+# despliega un frontend web. Hoy el repo no tiene un build de Flutter Web configurado
+# (no existe carpeta web/), asi que ajustar ALLOWED_ORIGINS cuando exista ese dominio real.
+ALLOWED_ORIGINS = ["*"] if os.environ.get("ENV") == "development" else [
+    "https://sgeo-backend-production.up.railway.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
