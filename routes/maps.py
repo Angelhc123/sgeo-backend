@@ -6,7 +6,11 @@ from motor_ia_zonas_riesgo import ejecutar_ia_zonas_riesgo
 
 router = APIRouter(prefix="/api/map", tags=["maps"])
 
-# Caché simple en memoria (TODO: migrar a Redis para multi-worker)
+# Caché simple en memoria (TODO: migrar a Redis para multi-worker).
+# ADVERTENCIA: este dict vive en el proceso de un solo worker. Si en algun momento se
+# despliega con mas de un worker/replica (hoy el Procfile usa uvicorn sin --workers,
+# es decir 1 solo proceso), cada instancia tendra su propia copia y los usuarios podrian
+# ver datos cacheados distintos entre si.
 _cache_store = {}
 
 def _get_cached(key: str):
