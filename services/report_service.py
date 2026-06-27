@@ -171,7 +171,7 @@ def rechazar_reporte_en_db(db, reporte_id: str) -> dict:
         
     resultado = db.reportes_ciudadano.update_one(
         {"_id": reporte_obj_id},
-        {"$set": {"estado": "rechazado"}}
+        {"$set": {"estado": "rechazado", "rechazado_en": datetime.utcnow()}}
     )
     if resultado.modified_count == 0:
         raise HTTPException(status_code=404, detail="Reporte no encontrado o ya procesado")
