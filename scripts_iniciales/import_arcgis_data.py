@@ -1,100 +1,114 @@
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
-# Cargar configuración desde .env
 load_dotenv()
 MONGO_URL = os.getenv("MONGO_URL")
 
+PERU = timezone(timedelta(hours=-5))
+
+
+def _parse_fecha(valor) -> datetime:
+    """Convierte timestamp ms (ArcGIS) o string ISO a datetime UTC."""
+    if valor is None:
+        return datetime.utcnow()
+    if isinstance(valor, (int, float)) and valor > 1e9:
+        return datetime.fromtimestamp(valor / 1000.0, tz=timezone.utc).replace(tzinfo=None)
+    if isinstance(valor, str):
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(valor, fmt)
+            except ValueError:
+                pass
+    return datetime.utcnow()
+
+
 def import_arcgis_data():
     if not MONGO_URL:
-        print("❌ Error: Faltan las credenciales MONGO_URL en el archivo .env")
+        print("❌ Falta MONGO_URL en .env")
         return
 
     client = MongoClient(MONGO_URL)
-    db = client['geocrimen_tacna']
-    coleccion_sidpol = db['historial_delitos']
+    db = client["geocrimen_tacna"]
+    coleccion = db["historial_delitos"]
 
-    # Ruta del archivo JSON
     file_path = os.path.join(os.path.dirname(__file__), "datos_historicos_tacna.json")
-    
     if not os.path.exists(file_path):
-        print(f"❌ Error: No se encontró el archivo {file_path}")
+        print(f"❌ No se encontró {file_path}")
         return
 
-    # 🧹 LIMPIEZA PREVIA PARA EVITAR DUPLICADOS
-    # Borramos todos los registros que vinieron de ArcGIS previamente antes de insertar los nuevos.
-    # Así no borramos los reportes que hayan hecho los ciudadanos ("fuente": "ciudadano").
-    borrados = coleccion_sidpol.delete_many({"fuente": "arcgis_sidpol"})
-    print(f"🧹 Se borraron {borrados.deleted_count} registros antiguos de ArcGIS para evitar duplicados.")
+    # Borrar solo los datos de ArcGIS anteriores (no toca reportes ciudadanos)
+    borrados = coleccion.delete_many({"fuente": "arcgis_sidpol"})
+    print(f"🧹 {borrados.deleted_count} registros ArcGIS anteriores eliminados.")
 
-    print("Abriendo archivo de datos...")
     with open(file_path, "r", encoding="utf-8") as f:
-        datos_arcgis = json.load(f)
+        datos = json.load(f)
 
-    print(f"Se encontraron {len(datos_arcgis)} registros. Procesando...")
+    print(f"📂 {len(datos)} registros leídos. Procesando...")
 
-    nuevos_incidentes = []
-    errores = 0
+    nuevos = []
+    omitidos = 0
 
-    for registro in datos_arcgis:
+    for r in datos:
         try:
-            # Extraer y transformar coordenadas (ArcGIS REST devuelve WGS84 gracias al outSR=4326)
-            lat = registro.get("lat_hecho")
-            lon = registro.get("long_hecho")
+            lat = r.get("lat_hecho")
+            lon = r.get("long_hecho")
 
-            # Evitar registros con coordenadas nulas o en 0,0
-            if not lat or not lon or (lat == 0 and lon == 0):
+            # Descartar registros sin coordenadas válidas
+            if not lat or not lon or (abs(lat) < 0.001 and abs(lon) < 0.001):
+                omitidos += 1
                 continue
 
-            # Transformar fechas (ArcGIS devuelve timestamps en milisegundos)
-            fecha_ms = registro.get("fecha_hora_hecho")
-            if fecha_ms:
-                fecha_hecho = datetime.fromtimestamp(fecha_ms / 1000.0)
-            else:
-                fecha_hecho = datetime.utcnow()
+            fecha_hecho = _parse_fecha(r.get("fecha_hora_hecho"))
 
-            # Estandarizar solo las columnas útiles y descartar basuras internas (OBJECTID, códigos macroregionales, etc)
-            incidente_historico = {
+            # estado_coord: derivado de si tiene coordenadas (campo ausente en SIDPOL_DELITOS_TOTAL)
+            estado_coord_raw = r.get("ESTADO_COORD") or r.get("estado_coord")
+            if estado_coord_raw:
+                estado_coord = str(estado_coord_raw).strip()
+            else:
+                estado_coord = "CON COORDENADA"  # ya filtramos lat/lon arriba
+
+            incidente = {
                 "ubicacion": {
                     "type": "Point",
-                    "coordinates": [float(lon), float(lat)]
+                    "coordinates": [float(lon), float(lat)],
                 },
-                "direccion_hecho": registro.get("direccion_hecho"),
-                "tipo_via": registro.get("tipo_via_hecho"),
-                "departamento_hecho": registro.get("departamento_hecho"),
-                "provincia_hecho": registro.get("provincia_hecho"),
-                "distrito_hecho": registro.get("distrito_hecho"),
-                "ubigeo": registro.get("ubigeo_hecho_delito"),
+                "direccion_hecho": r.get("direccion_hecho"),
+                "tipo_via": r.get("tipo_via_hecho"),
+                "departamento_hecho": r.get("departamento_hecho"),
+                "provincia_hecho": r.get("provincia_hecho"),
+                "distrito_hecho": r.get("distrito_hecho"),
+                "ubigeo": r.get("ubigeo_hecho_delito"),
                 "fecha_hecho": fecha_hecho,
-                "turno_hecho": registro.get("turno_hecho"),
-                "tipo_hecho": registro.get("tipo_hecho"),
-                "subtipo_hecho": registro.get("subtipo_hecho"),
-                "modalidad_hecho": registro.get("modalidad_hecho"),
-                "estado_coord": registro.get("ESTADO_COORD"),
+                "turno_hecho": r.get("turno_hecho"),
+                "tipo_hecho": r.get("tipo_hecho"),
+                "subtipo_hecho": r.get("subtipo_hecho"),
+                "modalidad_hecho": r.get("modalidad_hecho"),
+                "estado_coord": estado_coord,
                 "fuente": "arcgis_sidpol",
-                "creado_en": datetime.utcnow()
+                "creado_en": datetime.utcnow(),
+                # Campos numéricos directos (útiles para agregaciones futuras)
+                "anio": r.get("año_hecho") or r.get("a�o_hecho"),
+                "mes": r.get("mes_hecho"),
+                "dia": r.get("dia_hecho"),
             }
-            
-            nuevos_incidentes.append(incidente_historico)
+            nuevos.append(incidente)
 
         except Exception as e:
-            errores += 1
-            # Para depurar puedes usar: print(f"Error procesando registro: {e}")
+            omitidos += 1
             continue
 
-    if nuevos_incidentes:
-        print(f"Insertando {len(nuevos_incidentes)} incidentes históricos en la base de datos...")
-        # InsertMany es eficiente para grandes cantidades de datos
-        resultado = coleccion_sidpol.insert_many(nuevos_incidentes)
-        print(f"✅ Se insertaron {len(resultado.inserted_ids)} registros correctamente.")
+    if nuevos:
+        resultado = coleccion.insert_many(nuevos)
+        print(f"✅ {len(resultado.inserted_ids)} registros insertados correctamente.")
     else:
-        print("⚠️ No se encontraron registros válidos para insertar.")
+        print("⚠️  No se encontraron registros válidos para insertar.")
 
-    if errores > 0:
-        print(f"⚠️ Se omitieron {errores} registros por errores de formato.")
+    if omitidos:
+        print(f"ℹ️  {omitidos} registros omitidos (sin coordenadas o con error).")
+
 
 if __name__ == "__main__":
     import_arcgis_data()
