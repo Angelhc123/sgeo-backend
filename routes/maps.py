@@ -64,9 +64,12 @@ def obtener_puntos_exactos():
     Esto evita falsos positivos y sesgos en el mapa de calor de la IA.
     """
     try:
-        # Filtro muy importante: {"estado": "confirmado"}
+        from datetime import datetime, timedelta
+        # Solo confirmados de los ultimos 60 dias: son alertas operativas vigentes,
+        # los mas antiguos ya viven en historial_delitos.
+        hace_60d = datetime.utcnow() - timedelta(days=60)
         reportes = list(db.reportes_ciudadano.find(
-            {"estado": "confirmado"}, 
+            {"estado": "confirmado", "confirmado_en": {"$gte": hace_60d}},
             {"_id": 1, "subtipo_hecho": 1, "ubicacion": 1, "estado": 1, "fecha_hora_hecho": 1}
         ))
         for rep in reportes:
