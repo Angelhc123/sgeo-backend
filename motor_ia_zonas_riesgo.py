@@ -52,6 +52,7 @@ def ejecutar_ia_zonas_riesgo():
         {
             "ubicacion": {"$exists": True},
             "estado_coord": {"$ne": "SIN COORDENADA"},
+            "provincia_hecho": "TACNA",  # solo provincia de Tacna
             "$or": [
                 # SIDPOL: solo el mes más reciente disponible
                 {
